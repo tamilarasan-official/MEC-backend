@@ -82,3 +82,17 @@ export {
   generateShopCode,
   generateUserRefCode,
 } from './token.util.js';
+
+// Storage utilities (Garage S3)
+export {
+  uploadFile,
+  uploadBase64Image,
+  deleteFile,
+  getUploadPresignedUrl,
+  getDownloadPresignedUrl,
+  getPublicUrl,
+  isStorageConfigured,
+  StorageFolders,
+} from './storage.util.js';
+
+export type { UploadResult, StorageFolder } from './storage.util.js';

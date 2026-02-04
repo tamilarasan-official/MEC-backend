@@ -14,6 +14,7 @@ import { shopPublicRoutes, shopSuperadminRoutes } from './modules/shops/shop.rou
 import { menuGlobalRoutes, menuPublicRoutes, menuOwnerRoutes, menuSuperadminRoutes } from './modules/menu/menu.routes.js';
 import orderRoutes from './modules/orders/order.routes.js';
 import { superadminRoutes } from './modules/superadmin/index.js';
+import { uploadRoutes } from './modules/uploads/index.js';
 
 // Import shared error class
 import { AppError } from './shared/middleware/error.middleware.js';
@@ -148,6 +149,9 @@ app.use(`${API_VERSION}/owner`, menuOwnerRoutes);
 app.use(`${API_VERSION}/superadmin/shops`, shopSuperadminRoutes);
 app.use(`${API_VERSION}/superadmin`, menuSuperadminRoutes);
 app.use(`${API_VERSION}/superadmin`, superadminRoutes);
+
+// Upload routes
+app.use(`${API_VERSION}/uploads`, uploadRoutes);
 
 // 404 handler
 app.use((_req: Request, _res: Response, next: NextFunction) => {
