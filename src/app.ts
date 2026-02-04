@@ -45,25 +45,51 @@ app.use(
 
 // CORS configuration
 const isProduction = process.env['NODE_ENV'] === 'production';
-const defaultOrigins = isProduction
-  ? [
-      'https://mecfoodapp.welocalhost.com',
-      'https://www.mecfoodapp.welocalhost.com',
-      'https://admin.mecfoodapp.welocalhost.com',
-    ]
-  : ['http://localhost:3000', 'http://localhost:5173'];
 
-const corsOrigins = process.env['CORS_ORIGIN']?.split(',') ?? defaultOrigins;
+// In production, allow all welocalhost.com subdomains dynamically
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) {
+      return callback(null, true);
+    }
 
-app.use(
-  cors({
-    origin: corsOrigins,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    credentials: true,
-    maxAge: 86400, // 24 hours
-  })
-);
+    // In development, allow localhost
+    if (!isProduction) {
+      const devOrigins = ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:3001', 'http://localhost:3002'];
+      if (devOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+    }
+
+    // In production, allow all *.welocalhost.com subdomains
+    if (origin.endsWith('.welocalhost.com') || origin === 'https://welocalhost.com') {
+      return callback(null, true);
+    }
+
+    // Check explicit CORS_ORIGIN env var
+    const allowedOrigins = process.env['CORS_ORIGIN']?.split(',') || [];
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    // Log rejected origins for debugging
+    logger.warn(`CORS blocked origin: ${origin}`);
+    callback(new Error('Not allowed by CORS'));
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Length', 'X-Request-Id'],
+  credentials: true,
+  maxAge: 86400, // 24 hours
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+
+// Handle preflight requests explicitly
+app.options('*', cors(corsOptions));
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));

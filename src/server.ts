@@ -15,19 +15,40 @@ const server = http.createServer(app);
 
 // Socket.IO configuration
 const isProduction = process.env['NODE_ENV'] === 'production';
-const defaultSocketOrigins = isProduction
-  ? [
-      'https://mecfoodapp.welocalhost.com',
-      'https://www.mecfoodapp.welocalhost.com',
-      'https://admin.mecfoodapp.welocalhost.com',
-    ]
-  : ['http://localhost:3000', 'http://localhost:5173'];
 
-const socketCorsOrigins = process.env['SOCKET_CORS_ORIGIN']?.split(',') ?? defaultSocketOrigins;
+// Dynamic origin validation for Socket.IO
+const socketCorsOrigin = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+  // Allow requests with no origin
+  if (!origin) {
+    return callback(null, true);
+  }
+
+  // In development, allow localhost
+  if (!isProduction) {
+    const devOrigins = ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:3001', 'http://localhost:3002'];
+    if (devOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+  }
+
+  // In production, allow all *.welocalhost.com subdomains
+  if (origin.endsWith('.welocalhost.com') || origin === 'https://welocalhost.com') {
+    return callback(null, true);
+  }
+
+  // Check explicit SOCKET_CORS_ORIGIN env var
+  const allowedOrigins = process.env['SOCKET_CORS_ORIGIN']?.split(',') || [];
+  if (allowedOrigins.includes(origin)) {
+    return callback(null, true);
+  }
+
+  logger.warn(`Socket.IO CORS blocked origin: ${origin}`);
+  callback(new Error('Not allowed by CORS'));
+};
 
 const io = new SocketIOServer(server, {
   cors: {
-    origin: socketCorsOrigins,
+    origin: socketCorsOrigin,
     methods: ['GET', 'POST'],
     credentials: true,
   },
