@@ -325,6 +325,27 @@ export class OrderController {
 
     res.json(successResponse(stats));
   });
+
+  /**
+   * Get analytics data for shop
+   * GET /orders/shop/analytics
+   * Role: captain, owner, superadmin
+   */
+  getAnalytics = asyncHandler(async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
+    const user = req.user as AuthUser;
+
+    // Superadmin can access any shop's analytics via query param
+    let shopId = user.shopId;
+    if (user.role === 'superadmin') {
+      shopId = req.query['shopId'] as string | undefined;
+    } else if (!shopId) {
+      throw AppError.forbidden('You are not assigned to a shop');
+    }
+
+    const analytics = await orderService.getShopAnalytics(shopId);
+
+    res.json(successResponse(analytics));
+  });
 }
 
 // Export singleton instance

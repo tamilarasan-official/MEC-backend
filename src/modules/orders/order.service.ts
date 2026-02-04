@@ -616,6 +616,105 @@ export class OrderService {
       totalRevenue,
     };
   }
+
+  /**
+   * Get analytics data for a shop
+   * If shopId is undefined, returns analytics for all shops (for superadmin)
+   */
+  async getShopAnalytics(shopId: string | undefined): Promise<Record<string, unknown>> {
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+
+    // Base match for shop
+    const shopMatch: Record<string, unknown> = {};
+    if (shopId) {
+      shopMatch['shop'] = new Types.ObjectId(shopId);
+    }
+
+    // Get this month's completed orders
+    const thisMonthOrders = await Order.find({
+      ...shopMatch,
+      status: 'completed',
+      completedAt: { $gte: thisMonthStart },
+    });
+
+    // Get last month's completed orders
+    const lastMonthOrders = await Order.find({
+      ...shopMatch,
+      status: 'completed',
+      completedAt: { $gte: lastMonthStart, $lte: lastMonthEnd },
+    });
+
+    // Get all completed orders for top items
+    const allCompletedOrders = await Order.find({
+      ...shopMatch,
+      status: 'completed',
+    });
+
+    // Calculate this month stats
+    const thisMonthRevenue = thisMonthOrders.reduce((sum, o) => sum + o.total, 0);
+    const thisMonthProfit = thisMonthOrders.reduce((sum, order) => {
+      return sum + order.items.reduce((itemSum, item) => {
+        const costPrice = item.price * 0.6; // Assume 40% margin
+        const sellPrice = item.offerPrice || item.price;
+        return itemSum + ((sellPrice - costPrice) * item.quantity);
+      }, 0);
+    }, 0);
+
+    // Calculate last month stats
+    const lastMonthRevenue = lastMonthOrders.reduce((sum, o) => sum + o.total, 0);
+
+    // Calculate growth
+    const revenueGrowth = lastMonthRevenue > 0
+      ? Math.round(((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100)
+      : (thisMonthRevenue > 0 ? 100 : 0);
+
+    // Unique customers
+    const uniqueCustomerIds = new Set(allCompletedOrders.map(o => o.user.toString()));
+    const uniqueCustomers = uniqueCustomerIds.size;
+
+    // Average order value
+    const avgOrderValue = allCompletedOrders.length > 0
+      ? Math.round(allCompletedOrders.reduce((sum, o) => sum + o.total, 0) / allCompletedOrders.length)
+      : 0;
+
+    // Profit margin
+    const profitMargin = thisMonthRevenue > 0
+      ? Math.round((thisMonthProfit / thisMonthRevenue) * 100)
+      : 0;
+
+    // Top selling items
+    const itemSales: Record<string, { id: string; name: string; quantity: number; revenue: number }> = {};
+    allCompletedOrders.forEach(order => {
+      order.items.forEach(item => {
+        const itemId = item.foodItem?.toString() || item.name;
+        if (!itemSales[itemId]) {
+          itemSales[itemId] = { id: itemId, name: item.name, quantity: 0, revenue: 0 };
+        }
+        itemSales[itemId].quantity += item.quantity;
+        itemSales[itemId].revenue += (item.offerPrice || item.price) * item.quantity;
+      });
+    });
+
+    const topItems = Object.values(itemSales)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+
+    return {
+      thisMonthRevenue,
+      thisMonthProfit: Math.round(thisMonthProfit),
+      thisMonthOrders: thisMonthOrders.length,
+      lastMonthRevenue,
+      revenueGrowth,
+      uniqueCustomers,
+      avgOrderValue,
+      totalCompletedOrders: allCompletedOrders.length,
+      profitMargin,
+      topItems,
+    };
+  }
 }
 
 // Export singleton instance

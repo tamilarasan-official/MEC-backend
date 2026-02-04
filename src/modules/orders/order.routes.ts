@@ -88,6 +88,17 @@ router.get(
 );
 
 /**
+ * Get shop analytics data
+ * GET /api/v1/orders/shop/analytics
+ * Role: captain, owner, superadmin
+ */
+router.get(
+  '/shop/analytics',
+  requireAuth('captain', 'owner', 'superadmin'),
+  orderController.getAnalytics
+);
+
+/**
  * Update order status
  * PUT /api/v1/orders/:id/status
  * Role: captain, owner
