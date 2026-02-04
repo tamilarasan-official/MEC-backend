@@ -89,6 +89,20 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   next();
 });
 
+// Root endpoint
+app.get('/', (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    message: 'MEC Food App API Server',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      api: '/api/v1',
+      docs: '/api/v1/docs',
+    },
+  });
+});
+
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {
   const dbStatus = getDatabaseStatus();
@@ -190,13 +204,14 @@ app.use((err: Error | AppError, req: Request, res: Response, _next: NextFunction
     });
   }
 
-  // Send error response
+  // Send error response (hide stack trace in production)
+  const isProduction = process.env['NODE_ENV'] === 'production';
   res.status(statusCode).json({
     success: false,
     error: {
       code,
       message,
-      ...(process.env['NODE_ENV'] === 'development' && {
+      ...(!isProduction && {
         stack: err.stack,
         details: err.message,
       }),
