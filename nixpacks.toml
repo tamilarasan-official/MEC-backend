@@ -1,0 +1,18 @@
+# Nixpacks configuration for MEC Backend
+# Used for deployment on Railway, Render, and other nixpacks-compatible platforms
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm run start"
+
+[variables]
+NODE_ENV = "production"
+NPM_CONFIG_PRODUCTION = "false"
