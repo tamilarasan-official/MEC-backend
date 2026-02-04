@@ -157,7 +157,7 @@ export function requireAuth(...roles: string[]) {
 
       // If roles specified, check if user has required role
       if (roles.length > 0 && req.user) {
-        const userRole = req.user.role as string;
+        const userRole = (req.user.role as string).toLowerCase();
 
         // Normalize user role (map legacy roles to new roles)
         let normalizedUserRole = userRole;
@@ -165,18 +165,21 @@ export function requireAuth(...roles: string[]) {
         if (userRole === 'super_admin') normalizedUserRole = 'superadmin';
         if (userRole === 'canteen') normalizedUserRole = 'captain';
 
-        // Map legacy roles to new roles for compatibility in required roles
+        // Map legacy roles to new roles for compatibility in required roles (case-insensitive)
         const normalizedRoles = roles.map(role => {
-          if (role === 'admin') return 'accountant';
-          if (role === 'super_admin') return 'superadmin';
-          if (role === 'canteen') return 'captain';
-          return role;
+          const lowerRole = role.toLowerCase();
+          if (lowerRole === 'admin') return 'accountant';
+          if (lowerRole === 'super_admin') return 'superadmin';
+          if (lowerRole === 'canteen') return 'captain';
+          return lowerRole;
         });
+
+        console.log('[AUTH] Role check:', { userRole: normalizedUserRole, requiredRoles: normalizedRoles, path: req.path });
 
         if (!normalizedRoles.includes(normalizedUserRole)) {
           return next(
             new AppError(
-              `Access denied. Required roles: ${roles.join(', ')}`,
+              `Access denied. Your role '${req.user.role}' is not authorized. Required: ${roles.join(', ')}`,
               HttpStatus.FORBIDDEN,
               'INSUFFICIENT_ROLE',
               true
