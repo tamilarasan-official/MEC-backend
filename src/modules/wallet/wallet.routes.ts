@@ -42,33 +42,33 @@ router.get(
 /**
  * @route POST /api/v1/accountant/students/:id/credit
  * @desc Credit a student's wallet
- * @access Private (Accountant, Superadmin)
+ * @access Private (Accountant, Owner, Superadmin)
  */
 router.post(
   '/accountant/students/:id/credit',
-  requireAuth('accountant', 'superadmin', 'admin', 'super_admin'),
+  requireAuth('accountant', 'owner', 'superadmin', 'admin', 'super_admin'),
   walletController.creditStudent.bind(walletController)
 );
 
 /**
  * @route POST /api/v1/accountant/students/:id/debit
  * @desc Debit a student's wallet
- * @access Private (Accountant, Superadmin)
+ * @access Private (Accountant, Owner, Superadmin)
  */
 router.post(
   '/accountant/students/:id/debit',
-  requireAuth('accountant', 'superadmin', 'admin', 'super_admin'),
+  requireAuth('accountant', 'owner', 'superadmin', 'admin', 'super_admin'),
   walletController.debitStudent.bind(walletController)
 );
 
 /**
  * @route GET /api/v1/accountant/transactions
  * @desc Get all transactions with filters
- * @access Private (Accountant, Superadmin)
+ * @access Private (Accountant, Owner, Captain, Superadmin)
  */
 router.get(
   '/accountant/transactions',
-  requireAuth('accountant', 'superadmin', 'admin', 'super_admin'),
+  requireAuth('accountant', 'owner', 'captain', 'superadmin', 'admin', 'super_admin'),
   walletController.getAllTransactions.bind(walletController)
 );
 

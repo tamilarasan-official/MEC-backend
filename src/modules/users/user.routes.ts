@@ -53,55 +53,55 @@ router.get(
 /**
  * @route GET /api/v1/accountant/pending-approvals
  * @desc Get list of pending user approvals
- * @access Private (Accountant, Superadmin)
+ * @access Private (Accountant, Owner, Captain, Superadmin)
  */
 router.get(
   '/accountant/pending-approvals',
-  requireAuth('accountant', 'superadmin', 'admin', 'super_admin'),
+  requireAuth('accountant', 'owner', 'captain', 'superadmin', 'admin', 'super_admin'),
   userController.getPendingApprovals.bind(userController)
 );
 
 /**
  * @route PUT /api/v1/accountant/approve/:id
  * @desc Approve a user
- * @access Private (Accountant, Superadmin)
+ * @access Private (Accountant, Owner, Superadmin)
  */
 router.put(
   '/accountant/approve/:id',
-  requireAuth('accountant', 'superadmin', 'admin', 'super_admin'),
+  requireAuth('accountant', 'owner', 'superadmin', 'admin', 'super_admin'),
   userController.approveUser.bind(userController)
 );
 
 /**
  * @route PUT /api/v1/accountant/reject/:id
  * @desc Reject a user
- * @access Private (Accountant, Superadmin)
+ * @access Private (Accountant, Owner, Superadmin)
  */
 router.put(
   '/accountant/reject/:id',
-  requireAuth('accountant', 'superadmin', 'admin', 'super_admin'),
+  requireAuth('accountant', 'owner', 'superadmin', 'admin', 'super_admin'),
   userController.rejectUser.bind(userController)
 );
 
 /**
  * @route GET /api/v1/accountant/students
  * @desc Get all approved students
- * @access Private (Accountant, Superadmin)
+ * @access Private (Accountant, Owner, Captain, Superadmin)
  */
 router.get(
   '/accountant/students',
-  requireAuth('accountant', 'superadmin', 'admin', 'super_admin'),
+  requireAuth('accountant', 'owner', 'captain', 'superadmin', 'admin', 'super_admin'),
   userController.getStudents.bind(userController)
 );
 
 /**
  * @route GET /api/v1/accountant/students/:id
  * @desc Get a specific student with wallet summary
- * @access Private (Accountant, Superadmin)
+ * @access Private (Accountant, Owner, Captain, Superadmin)
  */
 router.get(
   '/accountant/students/:id',
-  requireAuth('accountant', 'superadmin', 'admin', 'super_admin'),
+  requireAuth('accountant', 'owner', 'captain', 'superadmin', 'admin', 'super_admin'),
   userController.getStudentById.bind(userController)
 );
 
