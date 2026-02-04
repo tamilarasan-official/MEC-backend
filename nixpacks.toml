@@ -16,3 +16,5 @@ cmd = "npm run start"
 [variables]
 NODE_ENV = "production"
 NPM_CONFIG_PRODUCTION = "false"
+CORS_ORIGIN = "https://mecfoodapp.welocalhost.com,https://www.mecfoodapp.welocalhost.com,https://admin.mecfoodapp.welocalhost.com"
+SOCKET_CORS_ORIGIN = "https://mecfoodapp.welocalhost.com,https://www.mecfoodapp.welocalhost.com,https://admin.mecfoodapp.welocalhost.com"

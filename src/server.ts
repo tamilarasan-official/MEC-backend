@@ -14,10 +14,16 @@ const HOST = process.env['HOST'] ?? '0.0.0.0';
 const server = http.createServer(app);
 
 // Socket.IO configuration
-const socketCorsOrigins = process.env['SOCKET_CORS_ORIGIN']?.split(',') ?? [
-  'http://localhost:3000',
-  'http://localhost:5173',
-];
+const isProduction = process.env['NODE_ENV'] === 'production';
+const defaultSocketOrigins = isProduction
+  ? [
+      'https://mecfoodapp.welocalhost.com',
+      'https://www.mecfoodapp.welocalhost.com',
+      'https://admin.mecfoodapp.welocalhost.com',
+    ]
+  : ['http://localhost:3000', 'http://localhost:5173'];
+
+const socketCorsOrigins = process.env['SOCKET_CORS_ORIGIN']?.split(',') ?? defaultSocketOrigins;
 
 const io = new SocketIOServer(server, {
   cors: {

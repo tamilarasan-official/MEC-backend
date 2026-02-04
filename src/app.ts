@@ -44,7 +44,17 @@ app.use(
 );
 
 // CORS configuration
-const corsOrigins = process.env['CORS_ORIGIN']?.split(',') ?? ['http://localhost:3000', 'http://localhost:5173'];
+const isProduction = process.env['NODE_ENV'] === 'production';
+const defaultOrigins = isProduction
+  ? [
+      'https://mecfoodapp.welocalhost.com',
+      'https://www.mecfoodapp.welocalhost.com',
+      'https://admin.mecfoodapp.welocalhost.com',
+    ]
+  : ['http://localhost:3000', 'http://localhost:5173'];
+
+const corsOrigins = process.env['CORS_ORIGIN']?.split(',') ?? defaultOrigins;
+
 app.use(
   cors({
     origin: corsOrigins,
