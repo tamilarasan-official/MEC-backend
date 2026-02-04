@@ -163,11 +163,13 @@ export function requireAuth(...roles: string[]) {
         let normalizedUserRole = userRole;
         if (userRole === 'admin') normalizedUserRole = 'accountant';
         if (userRole === 'super_admin') normalizedUserRole = 'superadmin';
+        if (userRole === 'canteen') normalizedUserRole = 'captain';
 
         // Map legacy roles to new roles for compatibility in required roles
         const normalizedRoles = roles.map(role => {
           if (role === 'admin') return 'accountant';
           if (role === 'super_admin') return 'superadmin';
+          if (role === 'canteen') return 'captain';
           return role;
         });
 

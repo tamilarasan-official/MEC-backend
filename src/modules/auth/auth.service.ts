@@ -100,7 +100,21 @@ function getRefreshSecret(): string {
 // ============================================
 
 /**
+ * Normalize legacy roles to new roles
+ * Maps: admin -> accountant, super_admin -> superadmin, canteen -> captain
+ */
+function normalizeRole(role: string): UserRole {
+  const roleMap: Record<string, UserRole> = {
+    'admin': 'accountant',
+    'super_admin': 'superadmin',
+    'canteen': 'captain',
+  };
+  return (roleMap[role] || role) as UserRole;
+}
+
+/**
  * Convert user document to public data (without sensitive fields)
+ * Note: Roles are normalized (admin->accountant, super_admin->superadmin, canteen->captain)
  */
 function toPublicUser(user: IUserDocument): UserPublicData {
   return {
@@ -110,7 +124,7 @@ function toPublicUser(user: IUserDocument): UserPublicData {
     email: user.email,
     phone: user.phone,
     avatarUrl: user.avatarUrl,
-    role: user.role,
+    role: normalizeRole(user.role),
     isApproved: user.isApproved,
     isActive: user.isActive,
     rollNumber: user.rollNumber,
@@ -265,11 +279,12 @@ export class AuthService {
    * Generate access token for user
    * Token includes: id (sub), role, email, shopId (if applicable)
    * Expires in 15 minutes by default
+   * Note: Roles are normalized (admin->accountant, super_admin->superadmin, canteen->captain)
    */
   generateAccessToken(user: IUserDocument): string {
     const payload: TokenPayload = {
       sub: user._id.toString(),
-      role: user.role,
+      role: normalizeRole(user.role),
       email: user.email,
     };
 
