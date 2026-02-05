@@ -16,8 +16,8 @@ cmd = "npm run start"
 [variables]
 NODE_ENV = "production"
 NPM_CONFIG_PRODUCTION = "false"
-CORS_ORIGIN = "https://mec.welocalhost.com,https://mecfoodapp.welocalhost.com,https://www.mecfoodapp.welocalhost.com,https://admin.mecfoodapp.welocalhost.com"
-SOCKET_CORS_ORIGIN = "https://mec.welocalhost.com,https://mecfoodapp.welocalhost.com,https://www.mecfoodapp.welocalhost.com,https://admin.mecfoodapp.welocalhost.com"
+CORS_ORIGIN = "https://mec.welocalhost.com,https://mecfoodapp.welocalhost.com,https://www.mecfoodapp.welocalhost.com,https://admin.mecfoodapp.welocalhost.com,https://meclife.welocalhost.com,https://www.meclife.welocalhost.com"
+SOCKET_CORS_ORIGIN = "https://mec.welocalhost.com,https://mecfoodapp.welocalhost.com,https://www.mecfoodapp.welocalhost.com,https://admin.mecfoodapp.welocalhost.com,https://meclife.welocalhost.com,https://www.meclife.welocalhost.com"
 
 # JWT Configuration (IMPORTANT: These must match what was used when users registered)
 JWT_SECRET = "madrasone-jwt-secret-key-2024-production"
