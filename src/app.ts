@@ -46,30 +46,40 @@ app.use(
 // CORS configuration
 const isProduction = process.env['NODE_ENV'] === 'production';
 
+// Helper function to check if origin is allowed
+function isAllowedOrigin(origin: string): boolean {
+  // Allow all *.welocalhost.com subdomains (both http and https)
+  if (origin.includes('.welocalhost.com') || origin.includes('welocalhost.com')) {
+    return true;
+  }
+
+  // Allow localhost in development
+  if (!isProduction) {
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return true;
+    }
+  }
+
+  // Check explicit CORS_ORIGIN env var
+  const allowedOrigins = process.env['CORS_ORIGIN']?.split(',') || [];
+  if (allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  return false;
+}
+
 // In production, allow all welocalhost.com subdomains dynamically
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, etc.)
+    // Allow requests with no origin (mobile apps, curl, Postman, etc.)
     if (!origin) {
       return callback(null, true);
     }
 
-    // In development, allow localhost
-    if (!isProduction) {
-      const devOrigins = ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:3001', 'http://localhost:3002'];
-      if (devOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-    }
-
-    // In production, allow all *.welocalhost.com subdomains
-    if (origin.endsWith('.welocalhost.com') || origin === 'https://welocalhost.com') {
-      return callback(null, true);
-    }
-
-    // Check explicit CORS_ORIGIN env var
-    const allowedOrigins = process.env['CORS_ORIGIN']?.split(',') || [];
-    if (allowedOrigins.includes(origin)) {
+    // Check if origin is allowed
+    if (isAllowedOrigin(origin)) {
+      logger.debug(`CORS allowed origin: ${origin}`);
       return callback(null, true);
     }
 
@@ -78,7 +88,7 @@ const corsOptions: cors.CorsOptions = {
     callback(new Error('Not allowed by CORS'));
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'Cache-Control'],
   exposedHeaders: ['Content-Length', 'X-Request-Id'],
   credentials: true,
   maxAge: 86400, // 24 hours
@@ -86,9 +96,10 @@ const corsOptions: cors.CorsOptions = {
   optionsSuccessStatus: 204,
 };
 
+// Apply CORS middleware BEFORE other middleware
 app.use(cors(corsOptions));
 
-// Handle preflight requests explicitly
+// Handle preflight requests explicitly for all routes
 app.options('*', cors(corsOptions));
 
 // Body parsing middleware
@@ -167,13 +178,17 @@ app.get('/health', (_req: Request, res: Response) => {
 app.get('/version', (_req: Request, res: Response) => {
   res.json({
     success: true,
-    version: '1.1.0',
+    version: '1.2.0',
     buildDate: '2026-02-05',
     features: [
       'route-ordering-fix',
       'owner-role-accountant-access',
       'jwt-env-config',
+      'cors-fix-meclife',
     ],
+    cors: {
+      allowedPatterns: ['*.welocalhost.com', 'localhost (dev)'],
+    },
     routes: {
       ordersShopAnalytics: 'GET /api/v1/orders/shop/analytics',
       accountantStudents: 'GET /api/v1/accountant/students (roles: accountant, owner, captain, superadmin)',
