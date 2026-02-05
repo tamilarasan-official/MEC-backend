@@ -127,29 +127,20 @@ export class OrderController {
   });
 
   /**
-   * Get orders for the captain's shop
-   * GET /captain/orders
+   * Get all orders
+   * GET /orders/shop
    * Role: captain, owner, superadmin
+   * Returns all orders from orders collection (no shop filtering)
    */
   getShopOrders = asyncHandler(async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
-    const user = req.user as AuthUser;
-
-    // Superadmin can access any shop's orders via query param
-    let shopId = user.shopId;
-    if (user.role === 'superadmin') {
-      shopId = req.query['shopId'] as string | undefined;
-      // Superadmin must specify shopId or gets all orders
-    } else if (!shopId) {
-      throw AppError.forbidden('You are not assigned to a shop');
-    }
-
     // Validate query params
     const queryValidation = validateOrderQuery(req.query);
     if (!queryValidation.success) {
       throw AppError.validation('Invalid query parameters', queryValidation.errors);
     }
 
-    const result = await orderService.getShopOrders(shopId, queryValidation.data);
+    // Fetch all orders - no shop filtering
+    const result = await orderService.getShopOrders(undefined, queryValidation.data);
 
     res.json({
       success: true,
@@ -160,22 +151,14 @@ export class OrderController {
   });
 
   /**
-   * Get active orders for the captain's shop
-   * GET /captain/orders/active
+   * Get active orders
+   * GET /orders/shop/active
    * Role: captain, owner, superadmin
+   * Returns all active orders (pending, preparing, ready) from orders collection
    */
   getActiveOrders = asyncHandler(async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
-    const user = req.user as AuthUser;
-
-    // Superadmin can access any shop's orders via query param
-    let shopId = user.shopId;
-    if (user.role === 'superadmin') {
-      shopId = req.query['shopId'] as string | undefined;
-    } else if (!shopId) {
-      throw AppError.forbidden('You are not assigned to a shop');
-    }
-
-    const orders = await orderService.getActiveShopOrders(shopId);
+    // Fetch all active orders - no shop filtering
+    const orders = await orderService.getActiveShopOrders(undefined);
 
     res.json(successResponse(orders));
   });
