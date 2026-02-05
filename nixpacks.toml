@@ -1,6 +1,7 @@
 # Nixpacks configuration for MEC Backend
 # Used for deployment on Railway, Render, and other nixpacks-compatible platforms
-# Version: 1.4.0 - Swagger + CORS fixes
+# Version: 1.5.0 - Full CORS fix + Swagger documentation
+# Build timestamp: 2026-02-05T12:00:00Z
 
 [phases.setup]
 nixPkgs = ["nodejs_20"]
