@@ -54,6 +54,13 @@ export class ShopService {
    * Optionally creates an owner user if ownerDetails is provided
    */
   async createShop(data: CreateShopInput): Promise<{ shop: IShopDocument; owner?: { id: string; email: string; name: string } }> {
+    logger.info('createShop called with data:', {
+      name: data.name,
+      category: data.category,
+      hasOwnerDetails: !!data.ownerDetails,
+      ownerEmail: data.ownerDetails?.email,
+    });
+
     const session = await mongoose.startSession();
     session.startTransaction();
 
@@ -63,6 +70,13 @@ export class ShopService {
 
       // If ownerDetails provided, create new owner user
       if (data.ownerDetails) {
+        logger.info('Creating owner user with details:', {
+          name: data.ownerDetails.name,
+          email: data.ownerDetails.email,
+          hasPassword: !!data.ownerDetails.password,
+          phone: data.ownerDetails.phone,
+        });
+
         const { name, email, password, phone } = data.ownerDetails;
 
         // Check if email already exists
@@ -114,12 +128,23 @@ export class ShopService {
         });
 
         await ownerUser.save({ session });
+        logger.info('Owner user created successfully:', {
+          userId: ownerUser._id.toString(),
+          email: ownerUser.email,
+          role: ownerUser.role,
+          shopId: ownerUser.shop?.toString(),
+        });
 
         // Update shop with owner reference
         shop.owner = ownerUser._id;
         await shop.save({ session });
+        logger.info('Shop updated with owner reference:', {
+          shopId: shop._id.toString(),
+          ownerId: shop.owner?.toString(),
+        });
 
         await session.commitTransaction();
+        logger.info('Transaction committed successfully for shop and owner creation');
 
         // Populate owner before returning
         await shop.populate('owner', 'name email phone');
@@ -180,7 +205,13 @@ export class ShopService {
       return { shop };
     } catch (error) {
       await session.abortTransaction();
-      logger.error('Error creating shop:', { error, data });
+      logger.error('Error creating shop - transaction aborted:', {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+        shopName: data.name,
+        category: data.category,
+        ownerEmail: data.ownerDetails?.email,
+      });
       throw error;
     } finally {
       session.endSession();

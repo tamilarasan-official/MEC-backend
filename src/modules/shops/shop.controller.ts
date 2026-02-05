@@ -109,6 +109,16 @@ export class ShopController {
    */
   async createShop(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      logger.info('createShop controller received request:', {
+        body: {
+          name: req.body?.name,
+          category: req.body?.category,
+          hasOwnerDetails: !!req.body?.ownerDetails,
+          ownerEmail: req.body?.ownerDetails?.email,
+        },
+        userId: req.user?.id,
+      });
+
       const bodyResult = createShopSchema.safeParse(req.body);
 
       if (!bodyResult.success) {
@@ -116,6 +126,15 @@ export class ShopController {
           field: e.path.join('.'),
           message: e.message,
         }));
+
+        logger.warn('createShop validation failed:', {
+          errors,
+          bodyReceived: {
+            name: req.body?.name,
+            category: req.body?.category,
+            hasOwnerDetails: !!req.body?.ownerDetails,
+          },
+        });
 
         res.status(HttpStatus.BAD_REQUEST).json({
           success: false,
@@ -128,6 +147,13 @@ export class ShopController {
         });
         return;
       }
+
+      logger.info('createShop validation passed, calling service with:', {
+        name: bodyResult.data.name,
+        category: bodyResult.data.category,
+        hasOwnerDetails: !!bodyResult.data.ownerDetails,
+        ownerEmail: bodyResult.data.ownerDetails?.email,
+      });
 
       const result = await shopService.createShop(bodyResult.data);
 
