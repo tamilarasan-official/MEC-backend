@@ -178,20 +178,41 @@ app.get('/health', (_req: Request, res: Response) => {
 app.get('/version', (_req: Request, res: Response) => {
   res.json({
     success: true,
-    version: '1.2.0',
+    version: '1.3.0',
     buildDate: '2026-02-05',
     features: [
       'route-ordering-fix',
       'owner-role-accountant-access',
       'jwt-env-config',
       'cors-fix-meclife',
+      'superadmin-menu-endpoint',
     ],
     cors: {
       allowedPatterns: ['*.welocalhost.com', 'localhost (dev)'],
+      allowedDomains: ['meclife.welocalhost.com', 'api.mecfoodapp.welocalhost.com'],
     },
     routes: {
-      ordersShopAnalytics: 'GET /api/v1/orders/shop/analytics',
-      accountantStudents: 'GET /api/v1/accountant/students (roles: accountant, owner, captain, superadmin)',
+      auth: {
+        login: 'POST /api/v1/auth/login',
+        register: 'POST /api/v1/auth/register',
+        refresh: 'POST /api/v1/auth/refresh',
+        logout: 'POST /api/v1/auth/logout',
+        me: 'GET /api/v1/auth/me',
+      },
+      menu: {
+        items: 'GET /api/v1/menu/items',
+        offers: 'GET /api/v1/menu/offers',
+      },
+      shops: {
+        list: 'GET /api/v1/shops',
+        details: 'GET /api/v1/shops/:id',
+      },
+      superadmin: {
+        menu: 'GET /api/v1/superadmin/menu (all items including unavailable)',
+        shops: 'POST/PUT/DELETE /api/v1/superadmin/shops',
+        users: 'GET /api/v1/superadmin/users',
+        stats: 'GET /api/v1/superadmin/dashboard/stats',
+      },
     },
   });
 });
