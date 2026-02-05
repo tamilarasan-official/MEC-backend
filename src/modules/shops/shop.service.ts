@@ -80,21 +80,31 @@ export class ShopService {
         const { name, email, password, phone } = data.ownerDetails;
 
         // Check if email already exists
-        const existingUser = await User.findOne({ email: email.toLowerCase() }).session(session);
+        const emailToCheck = email.toLowerCase();
+        logger.info('Checking if email exists:', { email: emailToCheck });
+        const existingUser = await User.findOne({ email: emailToCheck }).session(session);
+        logger.info('Email check result:', {
+          email: emailToCheck,
+          found: !!existingUser,
+          existingUserId: existingUser?._id?.toString(),
+        });
         if (existingUser) {
           throw new Error(`User with email ${email} already exists`);
         }
 
         // Generate username from email
         const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_');
+        logger.info('Generated username from email:', { email, username });
 
         // Check username uniqueness
         let finalUsername = username;
         let counter = 1;
         while (await User.findOne({ username: finalUsername }).session(session)) {
+          logger.info('Username already taken, trying next:', { username: finalUsername });
           finalUsername = `${username}_${counter}`;
           counter++;
         }
+        logger.info('Final username to use:', { finalUsername });
 
         // Hash password
         const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
@@ -205,13 +215,30 @@ export class ShopService {
       return { shop };
     } catch (error) {
       await session.abortTransaction();
+
+      // Check for MongoDB duplicate key error
+      const mongoError = error as { code?: number; keyPattern?: Record<string, number>; keyValue?: Record<string, string> };
+      const isDuplicateKeyError = mongoError.code === 11000;
+
       logger.error('Error creating shop - transaction aborted:', {
         error: error instanceof Error ? error.message : error,
         stack: error instanceof Error ? error.stack : undefined,
         shopName: data.name,
         category: data.category,
         ownerEmail: data.ownerDetails?.email,
+        mongoErrorCode: mongoError.code,
+        isDuplicateKeyError,
+        keyPattern: mongoError.keyPattern,
+        keyValue: mongoError.keyValue,
       });
+
+      // Convert MongoDB duplicate key error to user-friendly message
+      if (isDuplicateKeyError) {
+        const field = Object.keys(mongoError.keyPattern || {})[0] || 'field';
+        const value = mongoError.keyValue ? Object.values(mongoError.keyValue)[0] : 'value';
+        throw new Error(`A user with this ${field} (${value}) already exists`);
+      }
+
       throw error;
     } finally {
       session.endSession();

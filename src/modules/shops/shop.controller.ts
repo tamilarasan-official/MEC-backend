@@ -176,12 +176,17 @@ export class ShopController {
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      // Handle duplicate email error specifically
+      logger.error('createShop controller error:', {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+
+      // Handle duplicate/conflict errors
       if (error instanceof Error && error.message.includes('already exists')) {
         res.status(HttpStatus.CONFLICT).json({
           success: false,
           error: {
-            code: 'DUPLICATE_EMAIL',
+            code: 'DUPLICATE_ENTRY',
             message: error.message,
           },
           timestamp: new Date().toISOString(),
