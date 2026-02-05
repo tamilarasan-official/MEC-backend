@@ -17,6 +17,7 @@ import { menuGlobalRoutes, menuPublicRoutes, menuOwnerRoutes, menuSuperadminRout
 import orderRoutes from './modules/orders/order.routes.js';
 import { superadminRoutes } from './modules/superadmin/index.js';
 import { uploadRoutes } from './modules/uploads/index.js';
+import imageProxyRoutes from './modules/uploads/image-proxy.routes.js';
 import { adhocPaymentsSuperadminRoutes, adhocPaymentsStudentRoutes } from './modules/adhoc-payments/index.js';
 
 // Import shared error class
@@ -276,6 +277,9 @@ app.use(`${API_VERSION}/student/payments`, adhocPaymentsStudentRoutes);
 
 // Upload routes
 app.use(`${API_VERSION}/uploads`, uploadRoutes);
+
+// Image proxy routes (public - for accessing Garage S3 images)
+app.use(`${API_VERSION}/images`, imageProxyRoutes);
 
 // 404 handler
 app.use((_req: Request, _res: Response, next: NextFunction) => {
