@@ -5,6 +5,7 @@ import app from './app.js';
 import { connectDatabase, disconnectDatabase } from './config/database.js';
 import { logger } from './config/logger.js';
 import { SocketEvents } from './config/constants.js';
+import { orderEvents } from './modules/orders/order.events.js';
 
 // Server configuration
 const PORT = parseInt(process.env['PORT'] ?? '3000', 10);
@@ -55,6 +56,10 @@ const io = new SocketIOServer(server, {
   pingTimeout: 60000,
   pingInterval: 25000,
 });
+
+// Initialize order events with Socket.IO instance
+orderEvents.initialize(io);
+logger.info('Order events system initialized with Socket.IO');
 
 // Socket.IO connection handling
 io.on(SocketEvents.CONNECT, (socket) => {
