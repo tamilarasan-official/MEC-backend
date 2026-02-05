@@ -65,6 +65,9 @@ export const menuSuperadminRoutes = Router();
 // All superadmin routes require superadmin role
 menuSuperadminRoutes.use(requireAuth('superadmin'));
 
+// GET /superadmin/menu - Get all menu items including unavailable (superadmin)
+menuSuperadminRoutes.get('/menu', (req, res, next) => menuController.getAllItemsSuperadmin(req, res, next));
+
 // POST /superadmin/categories - Create category for any shop
 menuSuperadminRoutes.post('/categories', (req, res, next) => menuController.createCategorySuperadmin(req, res, next));
 

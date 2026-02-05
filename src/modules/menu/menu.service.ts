@@ -18,17 +18,17 @@ export class MenuService {
 
   /**
    * Get all food items from all active shops
+   * @param includeUnavailable - If true, include unavailable items (for admin purposes)
    */
-  async getAllFoodItems(): Promise<IFoodItemDocument[]> {
+  async getAllFoodItems(includeUnavailable = false): Promise<IFoodItemDocument[]> {
     try {
-      const items = await FoodItem.find({
-        isAvailable: true,
-      })
+      const query = includeUnavailable ? {} : { isAvailable: true };
+      const items = await FoodItem.find(query)
         .populate('category', 'name icon')
         .populate('shop', 'name')
         .sort({ shop: 1, category: 1, name: 1 });
 
-      logger.info(`Retrieved ${items.length} food items from all shops`);
+      logger.info(`Retrieved ${items.length} food items from all shops (includeUnavailable: ${includeUnavailable})`);
       return items;
     } catch (error) {
       logger.error('Error fetching all food items:', { error });

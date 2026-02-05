@@ -539,6 +539,27 @@ export class MenuController {
   // ============================================
 
   /**
+   * GET /superadmin/menu - Get all menu items including unavailable (superadmin)
+   */
+  async getAllItemsSuperadmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const items = await menuService.getAllFoodItems(true); // Include unavailable items
+      const transformedItems = items.map(transformFoodItem);
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: { items: transformedItems },
+        meta: {
+          count: transformedItems.length,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * POST /superadmin/categories - Create category for any shop
    */
   async createCategorySuperadmin(req: Request, res: Response, next: NextFunction): Promise<void> {
