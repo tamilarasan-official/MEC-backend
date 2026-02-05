@@ -174,18 +174,37 @@ export function requireAuth(...roles: string[]) {
           return lowerRole;
         });
 
-        console.log('[AUTH] Role check:', { userRole: normalizedUserRole, requiredRoles: normalizedRoles, path: req.path });
+        const roleMatch = normalizedRoles.includes(normalizedUserRole);
+        console.log('[AUTH] Role check:', {
+          userId: req.user.id,
+          originalRole: req.user.role,
+          normalizedUserRole,
+          requiredRoles: roles,
+          normalizedRoles,
+          path: req.path,
+          method: req.method,
+          roleMatch,
+        });
 
-        if (!normalizedRoles.includes(normalizedUserRole)) {
+        if (!roleMatch) {
+          console.log('[AUTH] Access DENIED:', {
+            userId: req.user.id,
+            userRole: req.user.role,
+            normalizedUserRole,
+            requiredRoles: normalizedRoles,
+            endpoint: `${req.method} ${req.path}`,
+          });
           return next(
             new AppError(
-              `Access denied. Your role '${req.user.role}' is not authorized. Required: ${roles.join(', ')}`,
+              `Access denied. Your role '${req.user.role}' (normalized: '${normalizedUserRole}') is not authorized for ${req.method} ${req.path}. Required roles: ${normalizedRoles.join(', ')}`,
               HttpStatus.FORBIDDEN,
               'INSUFFICIENT_ROLE',
               true
             )
           );
         }
+
+        console.log('[AUTH] Access GRANTED:', { userId: req.user.id, role: normalizedUserRole, endpoint: `${req.method} ${req.path}` });
       }
 
       next();

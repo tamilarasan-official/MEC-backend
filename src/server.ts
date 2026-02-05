@@ -162,14 +162,25 @@ const startServer = async (): Promise<void> => {
 
     // Start listening
     server.listen(PORT, HOST, () => {
-      logger.info(`Server started`, {
-        host: HOST,
-        port: PORT,
-        environment: process.env['NODE_ENV'] ?? 'development',
-        nodeVersion: process.version,
-      });
-      logger.info(`Health check available at http://${HOST}:${PORT}/health`);
-      logger.info(`API available at http://${HOST}:${PORT}/api/v1`);
+      logger.info('='.repeat(60));
+      logger.info('MEC Food App Backend Started');
+      logger.info('='.repeat(60));
+      logger.info(`Version: 1.1.0 (Build: 2026-02-05)`);
+      logger.info(`Features: route-ordering-fix, owner-role-access, jwt-env-config`);
+      logger.info('-'.repeat(60));
+      logger.info(`Host: ${HOST}`);
+      logger.info(`Port: ${PORT}`);
+      logger.info(`Environment: ${process.env['NODE_ENV'] ?? 'development'}`);
+      logger.info(`Node: ${process.version}`);
+      logger.info('-'.repeat(60));
+      logger.info(`Health: http://${HOST}:${PORT}/health`);
+      logger.info(`Version: http://${HOST}:${PORT}/version`);
+      logger.info(`API: http://${HOST}:${PORT}/api/v1`);
+      logger.info('='.repeat(60));
+      logger.info('Key Routes:');
+      logger.info('  GET /api/v1/orders/shop/analytics - Shop analytics (captain, owner, superadmin)');
+      logger.info('  GET /api/v1/accountant/students - Student list (accountant, owner, captain, superadmin)');
+      logger.info('='.repeat(60));
     });
   } catch (error) {
     logger.error('Failed to start server:', { error });

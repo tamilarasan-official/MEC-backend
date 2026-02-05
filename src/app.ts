@@ -163,6 +163,24 @@ app.get('/health', (_req: Request, res: Response) => {
   res.status(statusCode).json(healthStatus);
 });
 
+// Version/debug endpoint - helps verify which code is deployed
+app.get('/version', (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    version: '1.1.0',
+    buildDate: '2026-02-05',
+    features: [
+      'route-ordering-fix',
+      'owner-role-accountant-access',
+      'jwt-env-config',
+    ],
+    routes: {
+      ordersShopAnalytics: 'GET /api/v1/orders/shop/analytics',
+      accountantStudents: 'GET /api/v1/accountant/students (roles: accountant, owner, captain, superadmin)',
+    },
+  });
+});
+
 // API version prefix
 const API_VERSION = '/api/v1';
 
