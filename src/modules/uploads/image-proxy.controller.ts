@@ -50,8 +50,14 @@ export async function proxyImage(req: Request, res: Response, next: NextFunction
       return;
     }
 
+    // Decode URL-encoded characters (e.g., %20 -> space)
+    const decodedFolder = decodeURIComponent(folder);
+    const decodedFilename = decodeURIComponent(filename);
+
     // Construct the S3 key
-    const key = `${folder}/${filename}`;
+    const key = `${decodedFolder}/${decodedFilename}`;
+
+    logger.info('Image proxy request', { folder: decodedFolder, filename: decodedFilename, key });
 
     const client = getS3Client();
 
@@ -94,15 +100,29 @@ export async function proxyImage(req: Request, res: Response, next: NextFunction
       res.send(buffer);
     }
   } catch (error: unknown) {
-    const err = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+    const err = error as { name?: string; code?: string; $metadata?: { httpStatusCode?: number }; message?: string };
 
-    if (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
-      res.status(404).json({ error: 'Image not found' });
+    // Log the full error for debugging
+    logger.error('Image proxy error:', {
+      name: err.name,
+      code: err.code,
+      message: err.message,
+      httpStatus: err.$metadata?.httpStatusCode,
+      folder: req.params.folder,
+      filename: req.params.filename,
+    });
+
+    if (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404 || err.code === 'NoSuchKey') {
+      res.status(404).json({ error: 'Image not found', key: `${req.params.folder}/${req.params.filename}` });
       return;
     }
 
-    logger.error('Image proxy error:', error);
-    res.status(500).json({ error: 'Failed to fetch image' });
+    if (err.name === 'AccessDenied' || err.$metadata?.httpStatusCode === 403) {
+      res.status(403).json({ error: 'Access denied to image' });
+      return;
+    }
+
+    res.status(500).json({ error: 'Failed to fetch image', details: err.message });
   }
 }
 
