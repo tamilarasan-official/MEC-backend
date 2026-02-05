@@ -16,6 +16,7 @@ import {
 import { AppError, asyncHandler } from '../../shared/middleware/error.middleware.js';
 import { HttpStatus } from '../../config/constants.js';
 import { orderEvents } from './order.events.js';
+import { logger } from '../../config/logger.js';
 import { AuthUser } from '../../shared/types/index.js';
 
 // ============================================
@@ -158,7 +159,9 @@ export class OrderController {
    */
   getActiveOrders = asyncHandler(async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
     // Fetch all active orders - no shop filtering
+    logger.info('Fetching all active orders (no shop filter)');
     const orders = await orderService.getActiveShopOrders(undefined);
+    logger.info(`Found ${orders.length} active orders`);
 
     res.json(successResponse(orders));
   });
