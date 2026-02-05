@@ -27,97 +27,68 @@ export { AppError };
 // Create Express app
 const app: Express = express();
 
+// Helper function to check if origin is allowed
+function isAllowedOrigin(origin: string): boolean {
+  return origin.includes('welocalhost.com') || origin.includes('localhost') || origin.includes('127.0.0.1');
+}
+
 // Trust proxy (for rate limiting behind reverse proxy)
 app.set('trust proxy', 1);
 
-// CORS configuration - MUST be first middleware
-const isProduction = process.env['NODE_ENV'] === 'production';
+// SIMPLE CORS - Allow all welocalhost.com subdomains
+// This runs BEFORE everything else
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const origin = req.headers.origin;
 
-// Allowed origins for CORS
-const ALLOWED_ORIGINS = [
-  'https://meclife.welocalhost.com',
-  'https://www.meclife.welocalhost.com',
-  'https://mec.welocalhost.com',
-  'https://mecfoodapp.welocalhost.com',
-  'https://www.mecfoodapp.welocalhost.com',
-  'https://admin.mecfoodapp.welocalhost.com',
-  'https://api.mecfoodapp.welocalhost.com',
-];
-
-// Helper function to check if origin is allowed
-function isAllowedOrigin(origin: string): boolean {
-  // Check explicit allowed origins
-  if (ALLOWED_ORIGINS.includes(origin)) {
-    return true;
+  // Allow all welocalhost.com subdomains
+  if (origin && origin.includes('welocalhost.com')) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control');
+    res.setHeader('Access-Control-Max-Age', '86400');
   }
 
-  // Allow all *.welocalhost.com subdomains (both http and https)
-  if (origin.match(/^https?:\/\/([a-zA-Z0-9-]+\.)?welocalhost\.com$/)) {
-    return true;
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
   }
 
-  // Allow localhost in development
-  if (!isProduction) {
-    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-      return true;
-    }
-  }
+  next();
+});
 
-  // Check explicit CORS_ORIGIN env var
-  const envOrigins = process.env['CORS_ORIGIN']?.split(',') || [];
-  if (envOrigins.includes(origin)) {
-    return true;
-  }
-
-  return false;
-}
-
-// CORS options
+// Also use cors middleware as backup
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, Postman, server-to-server, etc.)
+    // Allow requests with no origin
     if (!origin) {
       return callback(null, true);
     }
-
-    // Check if origin is allowed
-    if (isAllowedOrigin(origin)) {
-      return callback(null, origin); // Return the actual origin for credentials to work
+    // Allow all welocalhost.com subdomains
+    if (origin.includes('welocalhost.com')) {
+      return callback(null, origin);
     }
-
-    // Log rejected origins for debugging
-    logger.warn(`CORS blocked origin: ${origin}`);
-    // Still allow the request but without CORS headers - let the browser handle it
+    // Allow localhost in development
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return callback(null, origin);
+    }
     callback(null, false);
   },
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'Cache-Control', 'X-Request-Id'],
-  exposedHeaders: ['Content-Length', 'X-Request-Id'],
   credentials: true,
-  maxAge: 86400, // 24 hours preflight cache
-  preflightContinue: false,
-  optionsSuccessStatus: 204,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'Cache-Control'],
 };
 
-// Apply CORS middleware FIRST - before anything else
 app.use(cors(corsOptions));
-
-// Handle preflight OPTIONS requests explicitly
 app.options('*', cors(corsOptions));
 
 // Security middleware - AFTER CORS
 app.use(
   helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", 'data:', 'https:'],
-      },
-    },
+    contentSecurityPolicy: false, // Disable CSP to avoid conflicts
     crossOriginEmbedderPolicy: false,
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginResourcePolicy: false,
   })
 );
 
