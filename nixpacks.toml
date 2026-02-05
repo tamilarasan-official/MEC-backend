@@ -18,3 +18,18 @@ NODE_ENV = "production"
 NPM_CONFIG_PRODUCTION = "false"
 CORS_ORIGIN = "https://mec.welocalhost.com,https://mecfoodapp.welocalhost.com,https://www.mecfoodapp.welocalhost.com,https://admin.mecfoodapp.welocalhost.com"
 SOCKET_CORS_ORIGIN = "https://mec.welocalhost.com,https://mecfoodapp.welocalhost.com,https://www.mecfoodapp.welocalhost.com,https://admin.mecfoodapp.welocalhost.com"
+
+# JWT Configuration (IMPORTANT: These must match what was used when users registered)
+JWT_SECRET = "madrasone-jwt-secret-key-2024-production"
+JWT_ACCESS_SECRET = "madrasone-access-token-secret-key-2024"
+JWT_REFRESH_SECRET = "madrasone-refresh-token-secret-key-2024"
+JWT_ISSUER = "mecfoodapp"
+JWT_AUDIENCE = "mecfoodapp-users"
+
+# MongoDB (set via deployment platform secrets for security)
+# MONGODB_URI = "your-mongodb-uri"
+
+# S3 Storage
+GARAGE_ENDPOINT = "https://request.storage.mec.welocalhost.com"
+GARAGE_BUCKET = "mecfoodmenu"
+GARAGE_REGION = "garage"

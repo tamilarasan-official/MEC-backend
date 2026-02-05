@@ -79,9 +79,9 @@ export type PaymentMethodType = (typeof PaymentMethod)[keyof typeof PaymentMetho
 export const JwtConfig = {
   ACCESS_TOKEN_EXPIRY: process.env['JWT_ACCESS_TOKEN_EXPIRY'] ?? '15m',
   REFRESH_TOKEN_EXPIRY: process.env['JWT_REFRESH_TOKEN_EXPIRY'] ?? '7d',
-  ISSUER: 'mecfoodapp',
-  AUDIENCE: 'mecfoodapp-users',
-} as const;
+  ISSUER: process.env['JWT_ISSUER'] ?? 'mecfoodapp',
+  AUDIENCE: process.env['JWT_AUDIENCE'] ?? 'mecfoodapp-users',
+};
 
 // Rate Limiting Configuration
 export const RateLimitConfig = {
