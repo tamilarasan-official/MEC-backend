@@ -13,6 +13,55 @@ import {
 import { HttpStatus } from '../../config/constants.js';
 import { AppError } from '../../shared/middleware/error.middleware.js';
 import { logger } from '../../config/logger.js';
+import { IFoodItemDocument } from './food-item.model.js';
+
+// Transform MongoDB document to frontend-expected format
+interface FoodItemResponse {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  costPrice?: number;
+  image: string;
+  imageUrl?: string;
+  category: string;
+  shopId: string;
+  shopName?: string;
+  isAvailable: boolean;
+  isOffer?: boolean;
+  offerPrice?: number;
+  rating: number;
+  preparationTime: string;
+}
+
+function transformFoodItem(item: IFoodItemDocument): FoodItemResponse {
+  // Handle populated shop field
+  const shop = item.shop as unknown as { _id: string; name: string } | string;
+  const shopId = typeof shop === 'object' && shop !== null ? shop._id?.toString() : shop?.toString() || '';
+  const shopName = typeof shop === 'object' && shop !== null ? shop.name : undefined;
+
+  // Handle populated category field
+  const category = item.category as unknown as { _id: string; name: string } | string;
+  const categoryName = typeof category === 'object' && category !== null ? category.name : (category?.toString() || '');
+
+  return {
+    id: item._id.toString(),
+    name: item.name,
+    description: item.description || '',
+    price: item.price,
+    costPrice: item.costPrice,
+    image: item.imageUrl || '/placeholder.svg',
+    imageUrl: item.imageUrl,
+    category: categoryName,
+    shopId: shopId,
+    shopName: shopName,
+    isAvailable: item.isAvailable,
+    isOffer: item.isOffer,
+    offerPrice: item.offerPrice,
+    rating: item.rating || 4.0,
+    preparationTime: item.preparationTime ? `${item.preparationTime} min` : '15 min',
+  };
+}
 
 export class MenuController {
   // ============================================
@@ -25,12 +74,13 @@ export class MenuController {
   async getAllItems(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const items = await menuService.getAllFoodItems();
+      const transformedItems = items.map(transformFoodItem);
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: { items },
+        data: { items: transformedItems },
         meta: {
-          count: items.length,
+          count: transformedItems.length,
         },
         timestamp: new Date().toISOString(),
       });
@@ -45,12 +95,13 @@ export class MenuController {
   async getAllOffers(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const offers = await menuService.getAllOffers();
+      const transformedOffers = offers.map(transformFoodItem);
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: { items: offers },
+        data: { items: transformedOffers },
         meta: {
-          count: offers.length,
+          count: transformedOffers.length,
         },
         timestamp: new Date().toISOString(),
       });
@@ -79,12 +130,13 @@ export class MenuController {
       }
 
       const items = await menuService.getMenuItems(paramResult.data.shopId, queryResult.data);
+      const transformedItems = items.map(transformFoodItem);
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: items,
+        data: transformedItems,
         meta: {
-          count: items.length,
+          count: transformedItems.length,
         },
         timestamp: new Date().toISOString(),
       });
@@ -129,12 +181,13 @@ export class MenuController {
       }
 
       const offers = await menuService.getOffers(paramResult.data.shopId);
+      const transformedOffers = offers.map(transformFoodItem);
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: offers,
+        data: transformedOffers,
         meta: {
-          count: offers.length,
+          count: transformedOffers.length,
         },
         timestamp: new Date().toISOString(),
       });
@@ -245,7 +298,7 @@ export class MenuController {
 
       res.status(HttpStatus.CREATED).json({
         success: true,
-        data: item,
+        data: transformFoodItem(item),
         message: 'Food item created successfully',
         timestamp: new Date().toISOString(),
       });
@@ -319,7 +372,7 @@ export class MenuController {
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: item,
+        data: transformFoodItem(item),
         message: 'Food item updated successfully',
         timestamp: new Date().toISOString(),
       });
@@ -364,7 +417,7 @@ export class MenuController {
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: item,
+        data: transformFoodItem(item),
         message: `Item ${item.isAvailable ? 'marked available' : 'marked unavailable'}`,
         timestamp: new Date().toISOString(),
       });
@@ -428,7 +481,7 @@ export class MenuController {
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: item,
+        data: transformFoodItem(item),
         message: 'Offer set successfully',
         timestamp: new Date().toISOString(),
       });
@@ -472,7 +525,7 @@ export class MenuController {
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: item,
+        data: transformFoodItem(item),
         message: 'Offer removed successfully',
         timestamp: new Date().toISOString(),
       });
@@ -574,7 +627,7 @@ export class MenuController {
 
       res.status(HttpStatus.CREATED).json({
         success: true,
-        data: item,
+        data: transformFoodItem(item),
         message: 'Food item created successfully',
         timestamp: new Date().toISOString(),
       });
@@ -625,7 +678,7 @@ export class MenuController {
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: item,
+        data: transformFoodItem(item),
         message: 'Food item updated successfully',
         timestamp: new Date().toISOString(),
       });
@@ -657,7 +710,7 @@ export class MenuController {
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: item,
+        data: transformFoodItem(item),
         message: 'Food item deleted successfully',
         timestamp: new Date().toISOString(),
       });
