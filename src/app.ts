@@ -58,19 +58,19 @@ const corsOptions: cors.CorsOptions = {
     if (!isProduction) {
       const devOrigins = ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:3001', 'http://localhost:3002'];
       if (devOrigins.includes(origin)) {
-        return callback(null, true);
+        return callback(null, origin); // Return the actual origin
       }
     }
 
-    // In production, allow all *.welocalhost.com subdomains
+    // Allow all *.welocalhost.com subdomains (works in both dev and prod)
     if (origin.endsWith('.welocalhost.com') || origin === 'https://welocalhost.com') {
-      return callback(null, true);
+      return callback(null, origin); // Return the actual origin
     }
 
     // Check explicit CORS_ORIGIN env var
     const allowedOrigins = process.env['CORS_ORIGIN']?.split(',') || [];
     if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
+      return callback(null, origin); // Return the actual origin
     }
 
     // Log rejected origins for debugging
