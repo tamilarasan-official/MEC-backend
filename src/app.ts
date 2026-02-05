@@ -2,9 +2,11 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import swaggerUi from 'swagger-ui-express';
 import { RateLimitConfig, HttpStatus, ErrorMessages } from './config/constants.js';
 import { logger } from './config/logger.js';
 import { getDatabaseStatus } from './config/database.js';
+import { swaggerSpec } from './config/swagger.js';
 
 // Import route modules
 import authRoutes from './modules/auth/auth.routes.js';
@@ -220,13 +222,29 @@ app.get('/version', (_req: Request, res: Response) => {
 // API version prefix
 const API_VERSION = '/api/v1';
 
+// Swagger API Documentation
+app.use('/swagger', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: `
+    .swagger-ui .topbar { display: none }
+    .swagger-ui .info .title { font-size: 2.5em; }
+  `,
+  customSiteTitle: 'MEC Food App API Docs',
+  customfavIcon: '/favicon.ico',
+}));
+
+// Serve swagger spec as JSON
+app.get('/swagger.json', (_req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
+});
+
 // API root endpoint
 app.get(`${API_VERSION}`, (_req: Request, res: Response) => {
   res.json({
     success: true,
     message: 'MEC Food App API',
     version: '1.0.0',
-    documentation: '/api/v1/docs',
+    documentation: '/swagger',
   });
 });
 
