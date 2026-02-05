@@ -3,13 +3,13 @@
  * Central location for all app-wide constant values
  */
 
-// User Roles
+// User Roles (matches user.model.ts definitions)
 export const UserRole = {
-  CUSTOMER: 'customer',
-  VENDOR: 'vendor',
-  DELIVERY: 'delivery',
-  ADMIN: 'admin',
-  SUPER_ADMIN: 'super_admin',
+  STUDENT: 'student',
+  CAPTAIN: 'captain',
+  OWNER: 'owner',
+  ACCOUNTANT: 'accountant',
+  SUPERADMIN: 'superadmin',
 } as const;
 
 export type UserRoleType = (typeof UserRole)[keyof typeof UserRole];
