@@ -35,18 +35,23 @@ function isAllowedOrigin(origin: string): boolean {
 // Trust proxy (for rate limiting behind reverse proxy)
 app.set('trust proxy', 1);
 
-// SIMPLE CORS - Allow all welocalhost.com subdomains
+// Helper function to set all CORS headers
+function setCorsHeaders(res: Response, origin: string): void {
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control');
+  res.setHeader('Access-Control-Max-Age', '86400');
+}
+
+// SIMPLE CORS - Allow all welocalhost.com subdomains AND localhost
 // This runs BEFORE everything else
 app.use((req: Request, res: Response, next: NextFunction) => {
   const origin = req.headers.origin;
 
-  // Allow all welocalhost.com subdomains
-  if (origin && origin.includes('welocalhost.com')) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control');
-    res.setHeader('Access-Control-Max-Age', '86400');
+  // Allow all welocalhost.com subdomains AND localhost for development
+  if (origin && isAllowedOrigin(origin)) {
+    setCorsHeaders(res, origin);
   }
 
   // Handle preflight
@@ -131,11 +136,13 @@ app.get('/', (_req: Request, res: Response) => {
   res.json({
     success: true,
     message: 'MEC Food App API Server',
-    version: '1.0.0',
+    version: '1.5.0',
     endpoints: {
       health: '/health',
+      version: '/version',
       api: '/api/v1',
-      docs: '/api/v1/docs',
+      swagger: '/swagger',
+      swaggerJson: '/swagger.json',
     },
   });
 });
@@ -168,14 +175,16 @@ app.get('/health', (_req: Request, res: Response) => {
 app.get('/version', (_req: Request, res: Response) => {
   res.json({
     success: true,
-    version: '1.3.0',
+    version: '1.5.0',
     buildDate: '2026-02-05',
     features: [
       'route-ordering-fix',
       'owner-role-accountant-access',
       'jwt-env-config',
-      'cors-fix-meclife',
+      'cors-fix-all-origins',
       'superadmin-menu-endpoint',
+      'swagger-documentation',
+      'full-cors-headers-on-errors',
     ],
     cors: {
       allowedPatterns: ['*.welocalhost.com', 'localhost (dev)'],
@@ -270,11 +279,10 @@ app.use((_req: Request, _res: Response, next: NextFunction) => {
 
 // Global error handler - ensure CORS headers are always sent
 app.use((err: Error | AppError, req: Request, res: Response, _next: NextFunction) => {
-  // Ensure CORS headers are set on error responses
+  // Ensure ALL CORS headers are set on error responses
   const origin = req.headers.origin;
   if (origin && isAllowedOrigin(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    setCorsHeaders(res, origin);
   }
 
   // Default error values
