@@ -30,28 +30,29 @@ const app: Express = express();
 // Trust proxy (for rate limiting behind reverse proxy)
 app.set('trust proxy', 1);
 
-// Security middleware
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrc: ["'self'"],
-        imgSrc: ["'self'", 'data:', 'https:'],
-      },
-    },
-    crossOriginEmbedderPolicy: false,
-  })
-);
-
-// CORS configuration
+// CORS configuration - MUST be first middleware
 const isProduction = process.env['NODE_ENV'] === 'production';
+
+// Allowed origins for CORS
+const ALLOWED_ORIGINS = [
+  'https://meclife.welocalhost.com',
+  'https://www.meclife.welocalhost.com',
+  'https://mec.welocalhost.com',
+  'https://mecfoodapp.welocalhost.com',
+  'https://www.mecfoodapp.welocalhost.com',
+  'https://admin.mecfoodapp.welocalhost.com',
+  'https://api.mecfoodapp.welocalhost.com',
+];
 
 // Helper function to check if origin is allowed
 function isAllowedOrigin(origin: string): boolean {
+  // Check explicit allowed origins
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    return true;
+  }
+
   // Allow all *.welocalhost.com subdomains (both http and https)
-  if (origin.includes('.welocalhost.com') || origin.includes('welocalhost.com')) {
+  if (origin.match(/^https?:\/\/([a-zA-Z0-9-]+\.)?welocalhost\.com$/)) {
     return true;
   }
 
@@ -63,46 +64,62 @@ function isAllowedOrigin(origin: string): boolean {
   }
 
   // Check explicit CORS_ORIGIN env var
-  const allowedOrigins = process.env['CORS_ORIGIN']?.split(',') || [];
-  if (allowedOrigins.includes(origin)) {
+  const envOrigins = process.env['CORS_ORIGIN']?.split(',') || [];
+  if (envOrigins.includes(origin)) {
     return true;
   }
 
   return false;
 }
 
-// In production, allow all welocalhost.com subdomains dynamically
+// CORS options
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, Postman, etc.)
+    // Allow requests with no origin (mobile apps, curl, Postman, server-to-server, etc.)
     if (!origin) {
       return callback(null, true);
     }
 
     // Check if origin is allowed
     if (isAllowedOrigin(origin)) {
-      logger.debug(`CORS allowed origin: ${origin}`);
-      return callback(null, true);
+      return callback(null, origin); // Return the actual origin for credentials to work
     }
 
     // Log rejected origins for debugging
     logger.warn(`CORS blocked origin: ${origin}`);
-    callback(new Error('Not allowed by CORS'));
+    // Still allow the request but without CORS headers - let the browser handle it
+    callback(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'Cache-Control'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'Cache-Control', 'X-Request-Id'],
   exposedHeaders: ['Content-Length', 'X-Request-Id'],
   credentials: true,
-  maxAge: 86400, // 24 hours
+  maxAge: 86400, // 24 hours preflight cache
   preflightContinue: false,
   optionsSuccessStatus: 204,
 };
 
-// Apply CORS middleware BEFORE other middleware
+// Apply CORS middleware FIRST - before anything else
 app.use(cors(corsOptions));
 
-// Handle preflight requests explicitly for all routes
+// Handle preflight OPTIONS requests explicitly
 app.options('*', cors(corsOptions));
+
+// Security middleware - AFTER CORS
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -280,8 +297,15 @@ app.use((_req: Request, _res: Response, next: NextFunction) => {
   next(new AppError(ErrorMessages.NOT_FOUND, HttpStatus.NOT_FOUND));
 });
 
-// Global error handler
+// Global error handler - ensure CORS headers are always sent
 app.use((err: Error | AppError, req: Request, res: Response, _next: NextFunction) => {
+  // Ensure CORS headers are set on error responses
+  const origin = req.headers.origin;
+  if (origin && isAllowedOrigin(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+
   // Default error values
   let statusCode: number = HttpStatus.INTERNAL_SERVER_ERROR;
   let message: string = ErrorMessages.INTERNAL_ERROR;
@@ -303,6 +327,7 @@ app.use((err: Error | AppError, req: Request, res: Response, _next: NextFunction
       stack: err.stack,
       path: req.path,
       method: req.method,
+      origin: origin,
     });
   } else {
     logger.warn('Operational error:', {
@@ -313,13 +338,13 @@ app.use((err: Error | AppError, req: Request, res: Response, _next: NextFunction
   }
 
   // Send error response (hide stack trace in production)
-  const isProduction = process.env['NODE_ENV'] === 'production';
+  const isProd = process.env['NODE_ENV'] === 'production';
   res.status(statusCode).json({
     success: false,
     error: {
       code,
       message,
-      ...(!isProduction && {
+      ...(!isProd && {
         stack: err.stack,
         details: err.message,
       }),
