@@ -14,19 +14,8 @@ import { authenticate, requireAuth } from '../../shared/middleware/auth.middlewa
 const router = Router();
 
 // ============================================
-// STUDENT ROUTES
+// STATIC ROUTES FIRST (before parameterized routes)
 // ============================================
-
-/**
- * Create a new order
- * POST /api/v1/orders
- * Role: student
- */
-router.post(
-  '/',
-  requireAuth('student'),
-  orderController.create
-);
 
 /**
  * Get current student's orders
@@ -40,18 +29,18 @@ router.get(
 );
 
 /**
- * Cancel an order (student only - pending orders)
- * POST /api/v1/orders/:id/cancel
- * Role: student
+ * Verify QR code for pickup
+ * POST /api/v1/orders/verify-qr
+ * Role: captain, owner
  */
 router.post(
-  '/:id/cancel',
-  requireAuth('student'),
-  orderController.cancel
+  '/verify-qr',
+  requireAuth('captain', 'owner'),
+  orderController.verifyQr
 );
 
 // ============================================
-// CAPTAIN/OWNER ROUTES
+// SHOP ROUTES (before :id parameterized routes)
 // ============================================
 
 /**
@@ -98,6 +87,36 @@ router.get(
   orderController.getAnalytics
 );
 
+// ============================================
+// ROOT ROUTE
+// ============================================
+
+/**
+ * Create a new order
+ * POST /api/v1/orders
+ * Role: student
+ */
+router.post(
+  '/',
+  requireAuth('student'),
+  orderController.create
+);
+
+// ============================================
+// PARAMETERIZED ROUTES (must be after static routes)
+// ============================================
+
+/**
+ * Cancel an order (student only - pending orders)
+ * POST /api/v1/orders/:id/cancel
+ * Role: student
+ */
+router.post(
+  '/:id/cancel',
+  requireAuth('student'),
+  orderController.cancel
+);
+
 /**
  * Update order status
  * PUT /api/v1/orders/:id/status
@@ -107,17 +126,6 @@ router.put(
   '/:id/status',
   requireAuth('captain', 'owner'),
   orderController.updateStatus
-);
-
-/**
- * Verify QR code for pickup
- * POST /api/v1/orders/verify-qr
- * Role: captain, owner
- */
-router.post(
-  '/verify-qr',
-  requireAuth('captain', 'owner'),
-  orderController.verifyQr
 );
 
 /**
@@ -131,12 +139,8 @@ router.post(
   orderController.complete
 );
 
-// ============================================
-// COMMON ROUTES
-// ============================================
-
 /**
- * Get order by ID
+ * Get order by ID (MUST BE LAST - catch-all for :id)
  * GET /api/v1/orders/:id
  * Role: authenticated (ownership checked in controller)
  */
