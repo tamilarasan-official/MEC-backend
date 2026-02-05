@@ -1,17 +1,18 @@
 # Nixpacks configuration for MEC Backend
 # Used for deployment on Railway, Render, and other nixpacks-compatible platforms
+# Version: 1.4.0 - Swagger + CORS fixes
 
 [phases.setup]
 nixPkgs = ["nodejs_20"]
 
 [phases.install]
-cmds = ["npm i"]
+cmds = ["npm ci || npm i"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["rm -rf dist", "npm run build"]
 
 [start]
-cmd = "npm run start"
+cmd = "node dist/server.js"
 
 [variables]
 NODE_ENV = "production"

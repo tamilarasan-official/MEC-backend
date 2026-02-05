@@ -1,6 +1,6 @@
 {
   "name": "mecfoodapp-backend",
-  "version": "1.1.0",
+  "version": "1.4.0",
   "description": "MEC Food App Backend API",
   "main": "dist/server.js",
   "type": "module",
