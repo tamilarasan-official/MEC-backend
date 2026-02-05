@@ -141,6 +141,8 @@ export class OrderService {
           price: foodItem.price,
           quantity: item.quantity,
           subtotal,
+          imageUrl: foodItem.imageUrl,
+          category: foodItem.category,
         };
 
         // Only add offerPrice if it exists

@@ -21,6 +21,8 @@ export interface IOrderItem {
   offerPrice?: number;
   quantity: number;
   subtotal: number;
+  imageUrl?: string;
+  category?: string;
 }
 
 // Order interface
@@ -95,6 +97,12 @@ const OrderItemSchema = new Schema<IOrderItem>(
       type: Number,
       required: true,
       min: 0,
+    },
+    imageUrl: {
+      type: String,
+    },
+    category: {
+      type: String,
     },
   },
   { _id: false }
