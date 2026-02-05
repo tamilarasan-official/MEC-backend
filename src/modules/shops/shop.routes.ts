@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { shopController } from './shop.controller.js';
+import { requireAuth } from '../../shared/middleware/auth.middleware.js';
 
 // Public routes for shops
 export const shopPublicRoutes = Router();
@@ -12,6 +13,9 @@ shopPublicRoutes.get('/:id', (req, res, next) => shopController.getShopById(req,
 
 // Superadmin routes for shop management
 export const shopSuperadminRoutes = Router();
+
+// All superadmin shop routes require superadmin role
+shopSuperadminRoutes.use(requireAuth('superadmin'));
 
 // POST /superadmin/shops - Create shop
 shopSuperadminRoutes.post('/', (req, res, next) => shopController.createShop(req, res, next));

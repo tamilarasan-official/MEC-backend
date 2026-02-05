@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { menuController } from './menu.controller.js';
+import { requireAuth } from '../../shared/middleware/auth.middleware.js';
 
 // ============================================
 // GLOBAL PUBLIC ROUTES - /menu
@@ -34,6 +35,9 @@ menuPublicRoutes.get('/offers', (req, res, next) => menuController.getOffers(req
 
 export const menuOwnerRoutes = Router();
 
+// All owner routes require owner or superadmin role
+menuOwnerRoutes.use(requireAuth('owner', 'superadmin'));
+
 // POST /owner/categories - Create category for own shop
 menuOwnerRoutes.post('/categories', (req, res, next) => menuController.createCategoryOwner(req, res, next));
 
@@ -57,6 +61,9 @@ menuOwnerRoutes.delete('/menu/:id/offer', (req, res, next) => menuController.rem
 // ============================================
 
 export const menuSuperadminRoutes = Router();
+
+// All superadmin routes require superadmin role
+menuSuperadminRoutes.use(requireAuth('superadmin'));
 
 // POST /superadmin/categories - Create category for any shop
 menuSuperadminRoutes.post('/categories', (req, res, next) => menuController.createCategorySuperadmin(req, res, next));
