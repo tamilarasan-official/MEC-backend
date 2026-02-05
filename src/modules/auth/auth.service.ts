@@ -73,6 +73,10 @@ const SALT_ROUNDS = 12;
 const ACCESS_TOKEN_EXPIRY = process.env['JWT_ACCESS_TOKEN_EXPIRY'] ?? '15m';
 const REFRESH_TOKEN_EXPIRY = process.env['JWT_REFRESH_TOKEN_EXPIRY'] ?? '7d';
 
+// Account lockout configuration
+const LOCKOUT_THRESHOLD = parseInt(process.env['ACCOUNT_LOCKOUT_THRESHOLD'] ?? '5', 10);
+const LOCKOUT_DURATION_MS = parseInt(process.env['ACCOUNT_LOCKOUT_DURATION_MINUTES'] ?? '15', 10) * 60 * 1000;
+
 /**
  * Get JWT access secret from environment
  */
@@ -201,6 +205,7 @@ export class AuthService {
   /**
    * Login user with username and password
    * Returns tokens and user data on success
+   * Implements account lockout after multiple failed attempts
    */
   async login(username: string, password: string): Promise<LoginResult> {
     // Find user with password hash (excluded by default)
@@ -210,9 +215,45 @@ export class AuthService {
       throw new AuthError('Invalid credentials', 'INVALID_CREDENTIALS', 401);
     }
 
+    // Check if account is locked
+    if (user.accountLockedUntil && user.accountLockedUntil > new Date()) {
+      const remainingMs = user.accountLockedUntil.getTime() - Date.now();
+      const remainingMinutes = Math.ceil(remainingMs / 60000);
+      throw new AuthError(
+        `Account is locked. Please try again in ${remainingMinutes} minute(s).`,
+        'ACCOUNT_LOCKED',
+        423
+      );
+    }
+
+    // Reset lockout if duration has passed
+    if (user.accountLockedUntil && user.accountLockedUntil <= new Date()) {
+      user.failedLoginAttempts = 0;
+      user.accountLockedUntil = undefined;
+    }
+
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
+      // Increment failed login attempts
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+      user.lastFailedLoginAt = new Date();
+
+      // Lock account if threshold exceeded
+      if (user.failedLoginAttempts >= LOCKOUT_THRESHOLD) {
+        user.accountLockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
+        await user.save();
+        logger.warn(`Account locked due to failed attempts: ${username}`);
+        throw new AuthError(
+          `Account locked due to too many failed attempts. Please try again in ${LOCKOUT_DURATION_MS / 60000} minutes.`,
+          'ACCOUNT_LOCKED',
+          423
+        );
+      }
+
+      await user.save();
+      const attemptsRemaining = LOCKOUT_THRESHOLD - user.failedLoginAttempts;
+      logger.warn(`Failed login attempt for: ${username} (${attemptsRemaining} attempts remaining)`);
       throw new AuthError('Invalid credentials', 'INVALID_CREDENTIALS', 401);
     }
 
@@ -230,7 +271,9 @@ export class AuthService {
       );
     }
 
-    // Update last login timestamp
+    // Reset failed login attempts on successful login
+    user.failedLoginAttempts = 0;
+    user.accountLockedUntil = undefined;
     user.lastLoginAt = new Date();
     await user.save();
 
@@ -387,6 +430,34 @@ export class AuthService {
       return null;
     }
     return toPublicUser(user);
+  }
+
+  /**
+   * Change user password
+   * Requires current password verification
+   */
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    // Find user with password hash
+    const user = await User.findById(userId).select('+passwordHash');
+
+    if (!user) {
+      throw new AuthError('User not found', 'USER_NOT_FOUND', 404);
+    }
+
+    // Verify current password
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isPasswordValid) {
+      throw new AuthError('Current password is incorrect', 'INVALID_PASSWORD', 401);
+    }
+
+    // Hash new password
+    const newPasswordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+    // Update password
+    user.passwordHash = newPasswordHash;
+    await user.save();
+
+    logger.info(`Password changed for user: ${user.username}`);
   }
 }
 

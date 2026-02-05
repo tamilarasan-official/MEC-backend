@@ -4,6 +4,10 @@ import mongoose, { Schema, Document, Model, Types } from 'mongoose';
 export const ORDER_STATUSES = ['pending', 'preparing', 'ready', 'completed', 'cancelled'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
+// Payment status types
+export const PAYMENT_STATUSES = ['pending', 'paid', 'failed'] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
 // Valid status transitions
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   pending: ['preparing', 'cancelled'],
@@ -25,6 +29,45 @@ export interface IOrderItem {
   category?: string;
 }
 
+// Service types
+export const SERVICE_TYPES = ['food', 'laundry', 'xerox'] as const;
+export type ServiceType = (typeof SERVICE_TYPES)[number];
+
+// Laundry clothing categories
+export const LAUNDRY_CATEGORIES = ['regular', 'delicates', 'denim', 'woolen', 'shoes', 'bedding', 'curtains'] as const;
+export type LaundryCategory = (typeof LAUNDRY_CATEGORIES)[number];
+
+// Laundry item in service details
+export interface ILaundryItem {
+  category: LaundryCategory;
+  count: number;
+  pricePerItem: number;
+}
+
+// Xerox paper sizes
+export const XEROX_PAPER_SIZES = ['A4', 'A3', 'Letter', 'Legal'] as const;
+export type XeroxPaperSize = (typeof XEROX_PAPER_SIZES)[number];
+
+// Service details for laundry/xerox orders
+export interface IServiceDetails {
+  type: ServiceType;
+  // Laundry specific
+  laundry?: {
+    items: ILaundryItem[];
+    totalClothes: number;
+    specialInstructions?: string;
+  };
+  // Xerox specific
+  xerox?: {
+    pageCount: number;
+    copies: number;
+    colorType: 'bw' | 'color';
+    paperSize: XeroxPaperSize;
+    doubleSided: boolean;
+    specialInstructions?: string;
+  };
+}
+
 // Order interface
 export interface IOrder {
   orderNumber: string;
@@ -33,7 +76,12 @@ export interface IOrder {
   items: IOrderItem[];
   total: number;
   status: OrderStatus;
+  paymentStatus: PaymentStatus;
   notes?: string;
+
+  // Service type (food, laundry, xerox)
+  serviceType: ServiceType;
+  serviceDetails?: IServiceDetails;
 
   // Pickup details
   pickupToken: string;
@@ -131,11 +179,9 @@ const OrderSchema = new Schema<IOrderDocument, IOrderModel>(
     },
     items: {
       type: [OrderItemSchema],
-      required: true,
-      validate: {
-        validator: (items: IOrderItem[]) => items.length > 0,
-        message: 'Order must have at least one item',
-      },
+      default: [],
+      // Note: For food orders, items are required. For laundry/xerox, serviceDetails is used instead.
+      // Validation is done at the service level.
     },
     total: {
       type: Number,
@@ -151,10 +197,64 @@ const OrderSchema = new Schema<IOrderDocument, IOrderModel>(
       default: 'pending',
       index: true,
     },
+    paymentStatus: {
+      type: String,
+      enum: {
+        values: PAYMENT_STATUSES,
+        message: '{VALUE} is not a valid payment status',
+      },
+      default: 'pending',
+      index: true,
+    },
     notes: {
       type: String,
       trim: true,
       maxlength: [500, 'Notes cannot exceed 500 characters'],
+    },
+
+    // Service type (food, laundry, xerox)
+    serviceType: {
+      type: String,
+      enum: {
+        values: SERVICE_TYPES,
+        message: '{VALUE} is not a valid service type',
+      },
+      default: 'food',
+      index: true,
+    },
+
+    // Service details for laundry/xerox
+    serviceDetails: {
+      type: {
+        type: String,
+        enum: SERVICE_TYPES,
+      },
+      laundry: {
+        items: [{
+          category: {
+            type: String,
+            enum: LAUNDRY_CATEGORIES,
+          },
+          count: Number,
+          pricePerItem: Number,
+        }],
+        totalClothes: Number,
+        specialInstructions: String,
+      },
+      xerox: {
+        pageCount: Number,
+        copies: Number,
+        colorType: {
+          type: String,
+          enum: ['bw', 'color'],
+        },
+        paperSize: {
+          type: String,
+          enum: XEROX_PAPER_SIZES,
+        },
+        doubleSided: Boolean,
+        specialInstructions: String,
+      },
     },
 
     // Pickup details

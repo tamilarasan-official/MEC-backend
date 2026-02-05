@@ -33,6 +33,28 @@ const ownerDetailsSchema = z.object({
     .optional(),
 });
 
+// Owner details schema for updating owner during shop edit
+const updateOwnerDetailsSchema = z.object({
+  name: z
+    .string()
+    .min(2, 'Owner name must be at least 2 characters')
+    .max(100, 'Owner name cannot exceed 100 characters')
+    .trim()
+    .optional(),
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number')
+    .optional(),
+  phone: z
+    .string()
+    .regex(/^[6-9]\d{9}$/, 'Please provide a valid 10-digit Indian mobile number')
+    .optional()
+    .nullable(),
+});
+
 // Create shop schema
 export const createShopSchema = z.object({
   name: z
@@ -62,6 +84,7 @@ export const createShopSchema = z.object({
 
 // Types
 export type OwnerDetails = z.infer<typeof ownerDetailsSchema>;
+export type UpdateOwnerDetails = z.infer<typeof updateOwnerDetailsSchema>;
 
 // Update shop schema - all fields optional
 export const updateShopSchema = z.object({
@@ -80,6 +103,8 @@ export const updateShopSchema = z.object({
     errorMap: () => ({ message: 'Invalid shop category' }),
   }).optional(),
   ownerId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid owner ID format').optional().nullable(),
+  // Optional: Update owner credentials when editing shop
+  ownerDetails: updateOwnerDetailsSchema.optional(),
   imageUrl: z.string().url('Invalid image URL').optional().nullable(),
   bannerUrl: z.string().url('Invalid banner URL').optional().nullable(),
   operatingHours: z.array(operatingHoursSchema).optional(),

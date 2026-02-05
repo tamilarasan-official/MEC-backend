@@ -1,6 +1,7 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import swaggerUi from 'swagger-ui-express';
 import { RateLimitConfig, HttpStatus, ErrorMessages } from './config/constants.js';
@@ -37,6 +38,21 @@ function isAllowedOrigin(origin: string): boolean {
 
 // Trust proxy (for rate limiting behind reverse proxy)
 app.set('trust proxy', 1);
+
+// HTTPS redirect in production
+app.use((req: Request, res: Response, next: NextFunction) => {
+  // Skip for health checks and localhost
+  if (req.path === '/health' || req.hostname === 'localhost' || req.hostname === '127.0.0.1') {
+    return next();
+  }
+
+  // Redirect HTTP to HTTPS in production
+  if (process.env['NODE_ENV'] === 'production' && req.headers['x-forwarded-proto'] !== 'https') {
+    return res.redirect(301, `https://${req.headers.host}${req.url}`);
+  }
+
+  next();
+});
 
 // Helper function to set all CORS headers
 function setCorsHeaders(res: Response, origin: string): void {
@@ -94,15 +110,39 @@ app.options('*', cors(corsOptions));
 // Security middleware - AFTER CORS
 app.use(
   helmet({
-    contentSecurityPolicy: false, // Disable CSP to avoid conflicts
-    crossOriginEmbedderPolicy: false,
-    crossOriginResourcePolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"], // unsafe-inline needed for Next.js
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "blob:", "https://*.welocalhost.com"],
+        connectSrc: ["'self'", "https://*.welocalhost.com", "wss://*.welocalhost.com"],
+        fontSrc: ["'self'", "data:"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        formAction: ["'self'"],
+        upgradeInsecureRequests: [],
+      },
+    },
+    crossOriginEmbedderPolicy: false, // Required for loading external images
+    crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin for API
+    hsts: {
+      maxAge: 31536000, // 1 year
+      includeSubDomains: true,
+      preload: true,
+    },
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+    xContentTypeOptions: true,
+    xFrameOptions: { action: "deny" },
   })
 );
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Cookie parser middleware (for httpOnly refresh token cookies)
+app.use(cookieParser());
 
 // General rate limiting
 const generalLimiter = rateLimit({
@@ -132,6 +172,11 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
     userAgent: req.get('user-agent'),
   });
   next();
+});
+
+// Silently handle browser extension requests (password managers, etc.)
+app.get('/enc.js', (_req: Request, res: Response) => {
+  res.status(204).end();
 });
 
 // Root endpoint
@@ -174,48 +219,12 @@ app.get('/health', (_req: Request, res: Response) => {
   res.status(statusCode).json(healthStatus);
 });
 
-// Version/debug endpoint - helps verify which code is deployed
+// Version endpoint - minimal info for production
 app.get('/version', (_req: Request, res: Response) => {
   res.json({
     success: true,
     version: '1.5.0',
-    buildDate: '2026-02-05',
-    features: [
-      'route-ordering-fix',
-      'owner-role-accountant-access',
-      'jwt-env-config',
-      'cors-fix-all-origins',
-      'superadmin-menu-endpoint',
-      'swagger-documentation',
-      'full-cors-headers-on-errors',
-    ],
-    cors: {
-      allowedPatterns: ['*.welocalhost.com', 'localhost (dev)'],
-      allowedDomains: ['meclife.welocalhost.com', 'api.mecfoodapp.welocalhost.com'],
-    },
-    routes: {
-      auth: {
-        login: 'POST /api/v1/auth/login',
-        register: 'POST /api/v1/auth/register',
-        refresh: 'POST /api/v1/auth/refresh',
-        logout: 'POST /api/v1/auth/logout',
-        me: 'GET /api/v1/auth/me',
-      },
-      menu: {
-        items: 'GET /api/v1/menu/items',
-        offers: 'GET /api/v1/menu/offers',
-      },
-      shops: {
-        list: 'GET /api/v1/shops',
-        details: 'GET /api/v1/shops/:id',
-      },
-      superadmin: {
-        menu: 'GET /api/v1/superadmin/menu (all items including unavailable)',
-        shops: 'POST/PUT/DELETE /api/v1/superadmin/shops',
-        users: 'GET /api/v1/superadmin/users',
-        stats: 'GET /api/v1/superadmin/dashboard/stats',
-      },
-    },
+    status: 'operational',
   });
 });
 
@@ -327,14 +336,15 @@ app.use((err: Error | AppError, req: Request, res: Response, _next: NextFunction
     });
   }
 
-  // Send error response (hide stack trace in production)
-  const isProd = process.env['NODE_ENV'] === 'production';
+  // Send error response (hide stack trace unless explicitly in development)
+  // Default to secure mode - only show details in development
+  const isDev = process.env['NODE_ENV'] === 'development';
   res.status(statusCode).json({
     success: false,
     error: {
       code,
       message,
-      ...(!isProd && {
+      ...(isDev && {
         stack: err.stack,
         details: err.message,
       }),

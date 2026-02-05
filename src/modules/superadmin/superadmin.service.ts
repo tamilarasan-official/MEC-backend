@@ -7,6 +7,9 @@ import { Types } from 'mongoose';
 import { User } from '../users/user.model.js';
 import { Shop } from '../shops/shop.model.js';
 import { Order } from '../orders/order.model.js';
+import { FoodItem } from '../menu/food-item.model.js';
+import { PaymentRequest } from '../adhoc-payments/payment-request.model.js';
+import { PaymentSubmission } from '../adhoc-payments/payment-submission.model.js';
 
 // ============================================
 // TYPES
@@ -43,6 +46,20 @@ interface DashboardStats {
     today: number;
     thisWeek: number;
     thisMonth: number;
+    // Breakdown
+    ordersTotal: number;
+    adhocPaymentsTotal: number;
+  };
+  adhocPayments: {
+    totalCollected: number;
+    activeRequests: number;
+    totalRequests: number;
+    todayCollected: number;
+    thisMonthCollected: number;
+  };
+  menu: {
+    totalItems: number;
+    availableItems: number;
   };
 }
 
@@ -83,14 +100,28 @@ class SuperadminService {
       shopStats,
       orderStatusStats,
       todayOrderStats,
-      revenueStats,
+      orderRevenueStats,
+      adhocPaymentStats,
+      menuStats,
     ] = await Promise.all([
       this.getUserStats(todayStart),
       this.getShopStats(),
       this.getOrderStatusStats(),
       this.getTodayOrderStats(todayStart),
-      this.getRevenueStats(todayStart, weekStart, monthStart),
+      this.getOrderRevenueStats(todayStart, weekStart, monthStart),
+      this.getAdhocPaymentStats(todayStart, monthStart),
+      this.getMenuStats(),
     ]);
+
+    // Combine order revenue and adhoc payments for total revenue
+    const combinedRevenue = {
+      total: orderRevenueStats.total + adhocPaymentStats.totalCollected,
+      today: orderRevenueStats.today + adhocPaymentStats.todayCollected,
+      thisWeek: orderRevenueStats.thisWeek + adhocPaymentStats.thisWeekCollected,
+      thisMonth: orderRevenueStats.thisMonth + adhocPaymentStats.thisMonthCollected,
+      ordersTotal: orderRevenueStats.total,
+      adhocPaymentsTotal: adhocPaymentStats.totalCollected,
+    };
 
     return {
       users: userStats,
@@ -100,7 +131,15 @@ class SuperadminService {
         todayCount: todayOrderStats.count,
         todayRevenue: todayOrderStats.revenue,
       },
-      revenue: revenueStats,
+      revenue: combinedRevenue,
+      adhocPayments: {
+        totalCollected: adhocPaymentStats.totalCollected,
+        activeRequests: adhocPaymentStats.activeRequests,
+        totalRequests: adhocPaymentStats.totalRequests,
+        todayCollected: adhocPaymentStats.todayCollected,
+        thisMonthCollected: adhocPaymentStats.thisMonthCollected,
+      },
+      menu: menuStats,
     };
   }
 
@@ -194,7 +233,7 @@ class SuperadminService {
         $group: {
           _id: null,
           count: { $sum: 1 },
-          revenue: { $sum: '$totalAmount' },
+          revenue: { $sum: '$total' },
         },
       },
     ]);
@@ -203,29 +242,29 @@ class SuperadminService {
   }
 
   /**
-   * Get revenue statistics
+   * Get order revenue statistics (renamed from getRevenueStats)
    */
-  private async getRevenueStats(
+  private async getOrderRevenueStats(
     todayStart: Date,
     weekStart: Date,
     monthStart: Date
-  ): Promise<DashboardStats['revenue']> {
+  ): Promise<{ total: number; today: number; thisWeek: number; thisMonth: number }> {
     const [totalResult, todayResult, weekResult, monthResult] = await Promise.all([
       Order.aggregate([
         { $match: { status: 'completed' } },
-        { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+        { $group: { _id: null, total: { $sum: '$total' } } },
       ]),
       Order.aggregate([
         { $match: { status: 'completed', completedAt: { $gte: todayStart } } },
-        { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+        { $group: { _id: null, total: { $sum: '$total' } } },
       ]),
       Order.aggregate([
         { $match: { status: 'completed', completedAt: { $gte: weekStart } } },
-        { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+        { $group: { _id: null, total: { $sum: '$total' } } },
       ]),
       Order.aggregate([
         { $match: { status: 'completed', completedAt: { $gte: monthStart } } },
-        { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+        { $group: { _id: null, total: { $sum: '$total' } } },
       ]),
     ]);
 
@@ -234,6 +273,82 @@ class SuperadminService {
       today: todayResult[0]?.total || 0,
       thisWeek: weekResult[0]?.total || 0,
       thisMonth: monthResult[0]?.total || 0,
+    };
+  }
+
+  /**
+   * Get ad-hoc payment statistics
+   */
+  private async getAdhocPaymentStats(
+    todayStart: Date,
+    monthStart: Date
+  ): Promise<{
+    totalCollected: number;
+    activeRequests: number;
+    totalRequests: number;
+    todayCollected: number;
+    thisWeekCollected: number;
+    thisMonthCollected: number;
+  }> {
+    const weekStart = new Date(todayStart);
+    weekStart.setDate(weekStart.getDate() - 7);
+
+    const [
+      totalCollectedResult,
+      todayCollectedResult,
+      weekCollectedResult,
+      monthCollectedResult,
+      activeRequests,
+      totalRequests,
+    ] = await Promise.all([
+      // Total collected from all paid submissions
+      PaymentSubmission.aggregate([
+        { $match: { status: 'paid' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+      // Today's collections
+      PaymentSubmission.aggregate([
+        { $match: { status: 'paid', paidAt: { $gte: todayStart } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+      // This week's collections
+      PaymentSubmission.aggregate([
+        { $match: { status: 'paid', paidAt: { $gte: weekStart } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+      // This month's collections
+      PaymentSubmission.aggregate([
+        { $match: { status: 'paid', paidAt: { $gte: monthStart } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+      // Count of active payment requests
+      PaymentRequest.countDocuments({ status: 'active' }),
+      // Total payment requests
+      PaymentRequest.countDocuments({}),
+    ]);
+
+    return {
+      totalCollected: totalCollectedResult[0]?.total || 0,
+      todayCollected: todayCollectedResult[0]?.total || 0,
+      thisWeekCollected: weekCollectedResult[0]?.total || 0,
+      thisMonthCollected: monthCollectedResult[0]?.total || 0,
+      activeRequests,
+      totalRequests,
+    };
+  }
+
+  /**
+   * Get menu statistics
+   */
+  private async getMenuStats(): Promise<DashboardStats['menu']> {
+    const [totalItems, availableItems] = await Promise.all([
+      FoodItem.countDocuments({}),
+      FoodItem.countDocuments({ isAvailable: true }),
+    ]);
+
+    return {
+      totalItems,
+      availableItems,
     };
   }
 
@@ -306,7 +421,7 @@ class SuperadminService {
           $group: {
             _id: '$status',
             count: { $sum: 1 },
-            totalAmount: { $sum: '$totalAmount' },
+            totalAmount: { $sum: '$total' },
           },
         },
       ]),
@@ -318,7 +433,7 @@ class SuperadminService {
           $group: {
             _id: '$shop',
             count: { $sum: 1 },
-            totalAmount: { $sum: '$totalAmount' },
+            totalAmount: { $sum: '$total' },
           },
         },
         {
@@ -352,7 +467,7 @@ class SuperadminService {
               $dateToString: { format: '%Y-%m-%d', date: '$placedAt' },
             },
             count: { $sum: 1 },
-            totalAmount: { $sum: '$totalAmount' },
+            totalAmount: { $sum: '$total' },
             completed: {
               $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] },
             },

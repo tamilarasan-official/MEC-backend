@@ -42,6 +42,24 @@ router.get('/orders', superadminController.getAllOrders);
 router.get('/orders/stats', superadminController.getOrderStats);
 
 // ============================================
+// TRANSACTION MANAGEMENT ROUTES
+// ============================================
+
+/**
+ * Get transaction collection status (monthly collections info)
+ * GET /api/v1/superadmin/transactions/collections
+ * Role: superadmin
+ */
+router.get('/transactions/collections', superadminController.getTransactionCollections);
+
+/**
+ * Migrate existing transactions to monthly collections
+ * POST /api/v1/superadmin/transactions/migrate
+ * Role: superadmin
+ */
+router.post('/transactions/migrate', superadminController.migrateTransactions);
+
+// ============================================
 // EXPORT
 // ============================================
 

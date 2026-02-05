@@ -1,5 +1,10 @@
-import mongoose, { Types, FilterQuery } from 'mongoose';
-import { Transaction, ITransactionDocument, CreditSource } from './transaction.model.js';
+import mongoose, { Types } from 'mongoose';
+import { ITransactionDocument, CreditSource, WalletTransactionType } from './transaction.model.js';
+import {
+  getCurrentTransactionModel,
+  queryTransactions,
+  getUserTransactions,
+} from './monthly-transaction.util.js';
 import { User, IUserDocument } from '../users/user.model.js';
 import { logger } from '../../config/logger.js';
 
@@ -72,50 +77,30 @@ export class WalletService {
   }
 
   /**
-   * Get user's transaction history with pagination
+   * Get user's transaction history with pagination (queries across monthly collections)
    */
   async getTransactions(userId: string, filters: TransactionFilters): Promise<PaginatedTransactions> {
     const { type, startDate, endDate, page = 1, limit = 20 } = filters;
 
-    // Build query
-    const query: FilterQuery<ITransactionDocument> = {
-      user: new Types.ObjectId(userId),
-    };
-
-    if (type) {
-      query.type = type;
-    }
-
-    if (startDate || endDate) {
-      query.createdAt = {};
-      if (startDate) {
-        query.createdAt.$gte = new Date(startDate);
-      }
-      if (endDate) {
-        query.createdAt.$lte = new Date(endDate);
-      }
-    }
-
-    // Get total count
-    const total = await Transaction.countDocuments(query);
-
-    // Get transactions with pagination
     const skip = (page - 1) * limit;
-    const transactions = await Transaction.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate('processedBy', 'name')
-      .populate('order', 'orderNumber');
 
-    const totalPages = Math.ceil(total / limit);
+    // Use the monthly transaction utility to query across collections
+    const result = await getUserTransactions(new Types.ObjectId(userId), {
+      type: type as WalletTransactionType | undefined,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      limit,
+      skip,
+    });
+
+    const totalPages = Math.ceil(result.total / limit);
 
     return {
-      transactions,
+      transactions: result.transactions,
       pagination: {
         page,
         limit,
-        total,
+        total: result.total,
         totalPages,
         hasNextPage: page < totalPages,
         hasPrevPage: page > 1,
@@ -159,23 +144,27 @@ export class WalletService {
       user.balance = balanceAfter;
       await user.save({ session });
 
-      // Create transaction record
+      // Create transaction record in monthly collection
       const transactionDescription =
         description || `Wallet credited via ${source === 'cash_deposit' ? 'cash deposit' : 'online payment'}`;
 
-      const transaction = new Transaction({
-        user: user._id,
-        type: 'credit',
-        amount,
-        balanceBefore,
-        balanceAfter,
-        source,
-        description: transactionDescription,
-        status: 'completed',
-        processedBy: new Types.ObjectId(adminId),
-      });
-
-      await transaction.save({ session });
+      const TransactionModel = getCurrentTransactionModel();
+      const [transaction] = await TransactionModel.create(
+        [
+          {
+            user: user._id,
+            type: 'credit',
+            amount,
+            balanceBefore,
+            balanceAfter,
+            source,
+            description: transactionDescription,
+            status: 'completed',
+            processedBy: new Types.ObjectId(adminId),
+          },
+        ],
+        { session }
+      );
 
       // Commit transaction
       await session.commitTransaction();
@@ -244,19 +233,23 @@ export class WalletService {
       user.balance = balanceAfter;
       await user.save({ session });
 
-      // Create transaction record
-      const transaction = new Transaction({
-        user: user._id,
-        type: 'debit',
-        amount,
-        balanceBefore,
-        balanceAfter,
-        description,
-        status: 'completed',
-        processedBy: new Types.ObjectId(adminId),
-      });
-
-      await transaction.save({ session });
+      // Create transaction record in monthly collection
+      const TransactionModel = getCurrentTransactionModel();
+      const [transaction] = await TransactionModel.create(
+        [
+          {
+            user: user._id,
+            type: 'debit',
+            amount,
+            balanceBefore,
+            balanceAfter,
+            description,
+            status: 'completed',
+            processedBy: new Types.ObjectId(adminId),
+          },
+        ],
+        { session }
+      );
 
       // Commit transaction
       await session.commitTransaction();
@@ -308,20 +301,24 @@ export class WalletService {
       user.balance = balanceAfter;
       await user.save({ session });
 
-      // Create refund transaction
-      const transaction = new Transaction({
-        user: user._id,
-        type: 'refund',
-        amount,
-        balanceBefore,
-        balanceAfter,
-        source: 'refund',
-        description: description || `Refund for cancelled order`,
-        status: 'completed',
-        order: new Types.ObjectId(orderId),
-      });
-
-      await transaction.save({ session });
+      // Create refund transaction in monthly collection
+      const TransactionModel = getCurrentTransactionModel();
+      const [transaction] = await TransactionModel.create(
+        [
+          {
+            user: user._id,
+            type: 'refund',
+            amount,
+            balanceBefore,
+            balanceAfter,
+            source: 'refund',
+            description: description || `Refund for cancelled order`,
+            status: 'completed',
+            order: new Types.ObjectId(orderId),
+          },
+        ],
+        { session }
+      );
 
       // Commit transaction
       await session.commitTransaction();
@@ -384,19 +381,23 @@ export class WalletService {
       user.balance = balanceAfter;
       await user.save({ session });
 
-      // Create transaction record
-      const transaction = new Transaction({
-        user: user._id,
-        type: 'debit',
-        amount,
-        balanceBefore,
-        balanceAfter,
-        description: `Payment for order`,
-        status: 'completed',
-        order: new Types.ObjectId(orderId),
-      });
-
-      await transaction.save({ session });
+      // Create transaction record in monthly collection
+      const TransactionModel = getCurrentTransactionModel();
+      const [transaction] = await TransactionModel.create(
+        [
+          {
+            user: user._id,
+            type: 'debit',
+            amount,
+            balanceBefore,
+            balanceAfter,
+            description: `Payment for order`,
+            status: 'completed',
+            order: new Types.ObjectId(orderId),
+          },
+        ],
+        { session }
+      );
 
       // Commit transaction
       await session.commitTransaction();
@@ -421,61 +422,34 @@ export class WalletService {
   }
 
   /**
-   * Get all transactions (for accountant)
+   * Get all transactions (for accountant) - queries across monthly collections
    */
   async getAllTransactions(filters: AccountantTransactionFilters): Promise<PaginatedTransactions> {
     const { userId, type, source, status, startDate, endDate, page = 1, limit = 20 } = filters;
 
-    // Build query
-    const query: FilterQuery<ITransactionDocument> = {};
-
-    if (userId) {
-      query.user = new Types.ObjectId(userId);
-    }
-
-    if (type) {
-      query.type = type;
-    }
-
-    if (source) {
-      query.source = source;
-    }
-
-    if (status) {
-      query.status = status;
-    }
-
-    if (startDate || endDate) {
-      query.createdAt = {};
-      if (startDate) {
-        query.createdAt.$gte = new Date(startDate);
-      }
-      if (endDate) {
-        query.createdAt.$lte = new Date(endDate);
-      }
-    }
-
-    // Get total count
-    const total = await Transaction.countDocuments(query);
-
-    // Get transactions with pagination
     const skip = (page - 1) * limit;
-    const transactions = await Transaction.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate('user', 'name email rollNumber')
-      .populate('processedBy', 'name')
-      .populate('order', 'orderNumber');
 
-    const totalPages = Math.ceil(total / limit);
+    // Use the monthly transaction utility to query across collections
+    const result = await queryTransactions({
+      user: userId ? new Types.ObjectId(userId) : undefined,
+      type: type as WalletTransactionType | undefined,
+      source: source,
+      status: status as 'pending' | 'completed' | 'failed' | 'cancelled' | undefined,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      limit,
+      skip,
+      populate: ['user', 'processedBy', 'order'],
+    });
+
+    const totalPages = Math.ceil(result.total / limit);
 
     return {
-      transactions,
+      transactions: result.transactions,
       pagination: {
         page,
         limit,
-        total,
+        total: result.total,
         totalPages,
         hasNextPage: page < totalPages,
         hasPrevPage: page > 1,

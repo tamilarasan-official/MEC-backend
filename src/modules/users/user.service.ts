@@ -1,6 +1,6 @@
 import mongoose, { Types, FilterQuery } from 'mongoose';
 import { User, IUserDocument, UserRole } from './user.model.js';
-import { Transaction } from '../wallet/transaction.model.js';
+import { getCurrentTransactionModel } from '../wallet/monthly-transaction.util.js';
 import { Order } from '../orders/order.model.js';
 import { logger } from '../../config/logger.js';
 
@@ -138,19 +138,23 @@ export class UserService {
       if (initialBalance > 0) {
         user.balance = initialBalance;
 
-        // Create initial credit transaction
-        const transaction = new Transaction({
-          user: user._id,
-          type: 'credit',
-          amount: initialBalance,
-          balanceBefore: 0,
-          balanceAfter: initialBalance,
-          source: 'adjustment',
-          description: 'Initial wallet balance on account approval',
-          status: 'completed',
-        });
-
-        await transaction.save({ session });
+        // Create initial credit transaction in monthly collection
+        const TransactionModel = getCurrentTransactionModel();
+        await TransactionModel.create(
+          [
+            {
+              user: user._id,
+              type: 'credit',
+              amount: initialBalance,
+              balanceBefore: 0,
+              balanceAfter: initialBalance,
+              source: 'adjustment',
+              description: 'Initial wallet balance on account approval',
+              status: 'completed',
+            },
+          ],
+          { session }
+        );
       }
 
       await user.save({ session });

@@ -4,11 +4,12 @@
  */
 
 import mongoose, { Types, ClientSession } from 'mongoose';
-import { Order, IOrderDocument, OrderStatus, ORDER_STATUS_TRANSITIONS, IOrderItem } from './order.model.js';
+import { Order, IOrderDocument, OrderStatus, ORDER_STATUS_TRANSITIONS, IOrderItem, ILaundryItem, LAUNDRY_CATEGORIES, LaundryCategory } from './order.model.js';
+import { Shop } from '../shops/shop.model.js';
 import { User, IUserDocument } from '../users/user.model.js';
 import { FoodItem, IFoodItemDocument } from '../menu/food-item.model.js';
-import { Transaction } from '../wallet/transaction.model.js';
-import { CreateOrderInput, OrderQueryInput } from './order.validation.js';
+import { getCurrentTransactionModel } from '../wallet/monthly-transaction.util.js';
+import { CreateOrderInput, OrderQueryInput, CreateLaundryOrderInput, CreateXeroxOrderInput } from './order.validation.js';
 import { AppError } from '../../shared/middleware/error.middleware.js';
 import { HttpStatus, PaginationConfig } from '../../config/constants.js';
 import { PaginationMeta } from '../../shared/types/index.js';
@@ -153,7 +154,7 @@ export class OrderService {
         orderItems.push(orderItem);
       }
 
-      // 5. Check user balance
+      // 5. Check user balance (balance is only checked here, deduction happens on order completion)
       if (user.balance < total) {
         throw new AppError(
           `Insufficient balance. Required: ${total}, Available: ${user.balance}`,
@@ -174,12 +175,7 @@ export class OrderService {
       // 8. Generate QR data
       const qrData = generateQrData(orderId.toString(), pickupToken, data.shopId);
 
-      // 9. Deduct user balance
-      const balanceBefore = user.balance;
-      user.balance -= total;
-      await user.save({ session });
-
-      // 10. Create the order
+      // 9. Create the order (wallet deduction happens on order completion, not here)
       const order = new Order({
         _id: orderId,
         orderNumber,
@@ -188,6 +184,7 @@ export class OrderService {
         items: orderItems,
         total,
         status: 'pending',
+        paymentStatus: 'pending',
         notes: data.notes,
         pickupToken,
         qrData,
@@ -196,28 +193,256 @@ export class OrderService {
 
       await order.save({ session });
 
-      // 11. Create transaction record
-      const transaction = new Transaction({
-        user: new Types.ObjectId(userId),
-        type: 'debit',
-        amount: total,
-        balanceBefore,
-        balanceAfter: user.balance,
-        description: `Order payment - ${orderNumber}`,
-        status: 'completed',
-        order: orderId,
-      });
-
-      await transaction.save({ session });
-
-      // 12. Commit transaction
+      // 10. Commit transaction
       await session.commitTransaction();
 
-      // 13. Populate and return order
+      // 11. Populate and return order
       const populatedOrder = await Order.findById(orderId)
         .populate('user', 'name email phone')
         .populate('shop', 'name')
         .populate('items.foodItem', 'name imageUrl');
+
+      return {
+        order: populatedOrder!,
+        qrData,
+      };
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
+  }
+
+  /**
+   * Create a laundry service order
+   */
+  async createLaundryOrder(userId: string, data: CreateLaundryOrderInput): Promise<OrderResult> {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // 1. Validate user exists and is active
+      const user = await User.findOne({
+        _id: userId,
+        isActive: true,
+        role: 'student',
+      }).session(session);
+
+      if (!user) {
+        throw AppError.notFound('User not found or not active');
+      }
+
+      // 2. Validate shop is a laundry shop and is active
+      const shop = await Shop.findOne({
+        _id: new Types.ObjectId(data.shopId),
+        category: 'laundry',
+        isActive: true,
+      }).session(session);
+
+      if (!shop) {
+        throw AppError.notFound('Laundry shop not found or not active');
+      }
+
+      // 3. Calculate pricing based on laundry items
+      // Pricing: Regular: Rs. 10, Delicates: Rs. 15, Denim: Rs. 20, Woolen: Rs. 25, Shoes: Rs. 50, Bedding: Rs. 100, Curtains: Rs. 80
+      const priceMap: Record<LaundryCategory, number> = {
+        regular: 10,
+        delicates: 15,
+        denim: 20,
+        woolen: 25,
+        shoes: 50,
+        bedding: 100,
+        curtains: 80,
+      };
+
+      let total = 0;
+      let totalClothes = 0;
+      const laundryItems: ILaundryItem[] = [];
+
+      for (const item of data.items) {
+        const pricePerItem = priceMap[item.category];
+        const itemTotal = pricePerItem * item.count;
+        total += itemTotal;
+        totalClothes += item.count;
+
+        laundryItems.push({
+          category: item.category,
+          count: item.count,
+          pricePerItem,
+        });
+      }
+
+      // 4. Check user balance
+      if (user.balance < total) {
+        throw new AppError(
+          `Insufficient balance. Required: Rs. ${total}, Available: Rs. ${user.balance}`,
+          HttpStatus.BAD_REQUEST,
+          'INSUFFICIENT_BALANCE',
+          true,
+          { required: total, available: user.balance }
+        );
+      }
+
+      // 5. Generate order number and pickup token
+      const orderNumber = await Order.generateOrderNumber();
+      const pickupToken = Order.generatePickupToken();
+
+      // 6. Create temporary ObjectId for QR data
+      const orderId = new Types.ObjectId();
+
+      // 7. Generate QR data
+      const qrData = generateQrData(orderId.toString(), pickupToken, data.shopId);
+
+      // 8. Create the order
+      const order = new Order({
+        _id: orderId,
+        orderNumber,
+        user: new Types.ObjectId(userId),
+        shop: new Types.ObjectId(data.shopId),
+        items: [], // No food items for service orders
+        total,
+        status: 'pending',
+        paymentStatus: 'pending',
+        serviceType: 'laundry',
+        serviceDetails: {
+          type: 'laundry',
+          laundry: {
+            items: laundryItems,
+            totalClothes,
+            specialInstructions: data.specialInstructions,
+          },
+        },
+        pickupToken,
+        qrData,
+        placedAt: new Date(),
+      });
+
+      await order.save({ session });
+
+      // 9. Commit transaction
+      await session.commitTransaction();
+
+      // 10. Populate and return order
+      const populatedOrder = await Order.findById(orderId)
+        .populate('user', 'name email phone')
+        .populate('shop', 'name');
+
+      return {
+        order: populatedOrder!,
+        qrData,
+      };
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
+  }
+
+  /**
+   * Create a xerox service order
+   */
+  async createXeroxOrder(userId: string, data: CreateXeroxOrderInput): Promise<OrderResult> {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // 1. Validate user exists and is active
+      const user = await User.findOne({
+        _id: userId,
+        isActive: true,
+        role: 'student',
+      }).session(session);
+
+      if (!user) {
+        throw AppError.notFound('User not found or not active');
+      }
+
+      // 2. Validate shop is a xerox shop and is active
+      const shop = await Shop.findOne({
+        _id: new Types.ObjectId(data.shopId),
+        category: 'xerox',
+        isActive: true,
+      }).session(session);
+
+      if (!shop) {
+        throw AppError.notFound('Xerox shop not found or not active');
+      }
+
+      // 3. Calculate pricing
+      // Pricing: B&W: Rs. 1/page, Color: Rs. 5/page
+      // Double sided: 1.5x
+      // Paper size multiplier: A4: 1x, A3: 2x, Letter: 1x, Legal: 1.2x
+      const colorPrice = data.colorType === 'bw' ? 1 : 5;
+      const sizeMultiplier: Record<string, number> = {
+        A4: 1,
+        A3: 2,
+        Letter: 1,
+        Legal: 1.2,
+      };
+      const doubleSidedMultiplier = data.doubleSided ? 1.5 : 1;
+
+      const pricePerPage = colorPrice * sizeMultiplier[data.paperSize] * doubleSidedMultiplier;
+      const total = Math.ceil(pricePerPage * data.pageCount * data.copies);
+
+      // 4. Check user balance
+      if (user.balance < total) {
+        throw new AppError(
+          `Insufficient balance. Required: Rs. ${total}, Available: Rs. ${user.balance}`,
+          HttpStatus.BAD_REQUEST,
+          'INSUFFICIENT_BALANCE',
+          true,
+          { required: total, available: user.balance }
+        );
+      }
+
+      // 5. Generate order number and pickup token
+      const orderNumber = await Order.generateOrderNumber();
+      const pickupToken = Order.generatePickupToken();
+
+      // 6. Create temporary ObjectId for QR data
+      const orderId = new Types.ObjectId();
+
+      // 7. Generate QR data
+      const qrData = generateQrData(orderId.toString(), pickupToken, data.shopId);
+
+      // 8. Create the order
+      const order = new Order({
+        _id: orderId,
+        orderNumber,
+        user: new Types.ObjectId(userId),
+        shop: new Types.ObjectId(data.shopId),
+        items: [], // No food items for service orders
+        total,
+        status: 'pending',
+        paymentStatus: 'pending',
+        serviceType: 'xerox',
+        serviceDetails: {
+          type: 'xerox',
+          xerox: {
+            pageCount: data.pageCount,
+            copies: data.copies,
+            colorType: data.colorType,
+            paperSize: data.paperSize,
+            doubleSided: data.doubleSided,
+            specialInstructions: data.specialInstructions,
+          },
+        },
+        pickupToken,
+        qrData,
+        placedAt: new Date(),
+      });
+
+      await order.save({ session });
+
+      // 9. Commit transaction
+      await session.commitTransaction();
+
+      // 10. Populate and return order
+      const populatedOrder = await Order.findById(orderId)
+        .populate('user', 'name email phone')
+        .populate('shop', 'name');
 
       return {
         order: populatedOrder!,
@@ -392,8 +617,10 @@ export class OrderService {
 
       // Handle cancellation with refund
       if (newStatus === 'cancelled') {
-        // Only refund if cancelling from pending or preparing
-        if (['pending', 'preparing'].includes(order.status)) {
+        // Only refund if payment was already made (paymentStatus === 'paid')
+        // With the new flow, wallet is only deducted on completion, so most cancellations
+        // won't need refunds. This handles the edge case where payment was already processed.
+        if (order.paymentStatus === 'paid') {
           await this.processRefund(order, handledBy, reason, session);
         }
 
@@ -413,6 +640,9 @@ export class OrderService {
           break;
         case 'completed':
           order.completedAt = new Date();
+
+          // Deduct wallet on order completion (QR scan)
+          await this.processPaymentOnCompletion(order, session);
           break;
       }
 
@@ -454,21 +684,82 @@ export class OrderService {
     user.balance += order.total;
     await user.save({ session });
 
-    // Create refund transaction
-    const transaction = new Transaction({
-      user: order.user,
-      type: 'refund',
-      amount: order.total,
-      balanceBefore,
-      balanceAfter: user.balance,
-      description: `Refund for cancelled order ${order.orderNumber}${reason ? `: ${reason}` : ''}`,
-      status: 'completed',
-      order: order._id,
-      processedBy: new Types.ObjectId(processedBy),
-      source: 'refund',
-    });
+    // Create refund transaction in monthly collection
+    const TransactionModel = getCurrentTransactionModel();
+    await TransactionModel.create(
+      [
+        {
+          user: order.user,
+          type: 'refund',
+          amount: order.total,
+          balanceBefore,
+          balanceAfter: user.balance,
+          description: `Refund for cancelled order ${order.orderNumber}${reason ? `: ${reason}` : ''}`,
+          status: 'completed',
+          order: order._id,
+          processedBy: new Types.ObjectId(processedBy),
+          source: 'refund',
+        },
+      ],
+      { session }
+    );
+  }
 
-    await transaction.save({ session });
+  /**
+   * Process wallet payment when order is completed (QR scanned)
+   */
+  private async processPaymentOnCompletion(
+    order: IOrderDocument,
+    session: ClientSession
+  ): Promise<void> {
+    // Skip if already paid (shouldn't happen, but safety check)
+    if (order.paymentStatus === 'paid') {
+      return;
+    }
+
+    const user = await User.findById(order.user).session(session);
+
+    if (!user) {
+      throw AppError.notFound('User not found for payment');
+    }
+
+    // Check balance (student may have spent it since placing order)
+    if (user.balance < order.total) {
+      order.paymentStatus = 'failed';
+      throw new AppError(
+        `Insufficient balance. Required: Rs. ${order.total}, Available: Rs. ${user.balance}`,
+        HttpStatus.BAD_REQUEST,
+        'INSUFFICIENT_BALANCE_ON_COMPLETION',
+        true,
+        { required: order.total, available: user.balance }
+      );
+    }
+
+    // Deduct wallet
+    const balanceBefore = user.balance;
+    user.balance -= order.total;
+    await user.save({ session });
+
+    // Update payment status
+    order.paymentStatus = 'paid';
+
+    // Create transaction record in monthly collection
+    const TransactionModel = getCurrentTransactionModel();
+    await TransactionModel.create(
+      [
+        {
+          user: order.user,
+          type: 'debit',
+          amount: order.total,
+          balanceBefore,
+          balanceAfter: user.balance,
+          description: `Order payment - ${order.orderNumber}`,
+          status: 'completed',
+          order: order._id,
+        },
+      ],
+      { session }
+    );
   }
 
   /**

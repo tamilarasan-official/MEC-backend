@@ -7,6 +7,11 @@ import { Request, Response, NextFunction } from 'express';
 import { superadminService } from './superadmin.service.js';
 import { asyncHandler } from '../../shared/middleware/error.middleware.js';
 import { HttpStatus } from '../../config/constants.js';
+import {
+  getExistingTransactionCollections,
+  migrateExistingTransactions,
+  getMonthlyCollectionName,
+} from '../wallet/monthly-transaction.util.js';
 
 // ============================================
 // RESPONSE HELPERS
@@ -85,6 +90,43 @@ export class SuperadminController {
     );
 
     res.status(HttpStatus.OK).json(successResponse(stats));
+  });
+
+  /**
+   * Get transaction collections status
+   * GET /superadmin/transactions/collections
+   * Role: superadmin
+   */
+  getTransactionCollections = asyncHandler(async (_req: Request, res: Response, _next: NextFunction): Promise<void> => {
+    const collections = await getExistingTransactionCollections();
+    const currentMonth = getMonthlyCollectionName(new Date());
+
+    res.status(HttpStatus.OK).json(
+      successResponse({
+        currentCollection: currentMonth,
+        existingCollections: collections,
+        totalCollections: collections.length,
+      })
+    );
+  });
+
+  /**
+   * Migrate existing transactions to monthly collections
+   * POST /superadmin/transactions/migrate
+   * Role: superadmin
+   */
+  migrateTransactions = asyncHandler(async (_req: Request, res: Response, _next: NextFunction): Promise<void> => {
+    const result = await migrateExistingTransactions();
+
+    res.status(HttpStatus.OK).json(
+      successResponse(
+        {
+          migrated: result.migrated,
+          errors: result.errors,
+        },
+        `Migration complete: ${result.migrated} transactions migrated, ${result.errors} errors`
+      )
+    );
   });
 }
 

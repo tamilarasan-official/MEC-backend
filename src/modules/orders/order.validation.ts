@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ORDER_STATUSES } from './order.model.js';
+import { ORDER_STATUSES, LAUNDRY_CATEGORIES, XEROX_PAPER_SIZES } from './order.model.js';
 
 // ============================================
 // ORDER ITEM SCHEMA
@@ -38,6 +38,74 @@ export const createOrderSchema = z.object({
 });
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
+
+// ============================================
+// LAUNDRY ORDER SCHEMA
+// ============================================
+
+const laundryItemSchema = z.object({
+  category: z.enum(LAUNDRY_CATEGORIES, {
+    errorMap: () => ({ message: `Category must be one of: ${LAUNDRY_CATEGORIES.join(', ')}` }),
+  }),
+  count: z
+    .number()
+    .int('Count must be an integer')
+    .min(1, 'Count must be at least 1')
+    .max(100, 'Count cannot exceed 100'),
+});
+
+export const createLaundryOrderSchema = z.object({
+  shopId: z
+    .string()
+    .min(1, 'Shop ID is required')
+    .regex(/^[0-9a-fA-F]{24}$/, 'Invalid shop ID format'),
+  items: z
+    .array(laundryItemSchema)
+    .min(1, 'Laundry order must have at least one item')
+    .max(10, 'Cannot have more than 10 laundry categories'),
+  specialInstructions: z
+    .string()
+    .max(500, 'Special instructions cannot exceed 500 characters')
+    .trim()
+    .optional(),
+});
+
+export type CreateLaundryOrderInput = z.infer<typeof createLaundryOrderSchema>;
+
+// ============================================
+// XEROX ORDER SCHEMA
+// ============================================
+
+export const createXeroxOrderSchema = z.object({
+  shopId: z
+    .string()
+    .min(1, 'Shop ID is required')
+    .regex(/^[0-9a-fA-F]{24}$/, 'Invalid shop ID format'),
+  pageCount: z
+    .number()
+    .int('Page count must be an integer')
+    .min(1, 'Page count must be at least 1')
+    .max(1000, 'Page count cannot exceed 1000'),
+  copies: z
+    .number()
+    .int('Copies must be an integer')
+    .min(1, 'Copies must be at least 1')
+    .max(100, 'Copies cannot exceed 100'),
+  colorType: z.enum(['bw', 'color'], {
+    errorMap: () => ({ message: 'Color type must be bw or color' }),
+  }),
+  paperSize: z.enum(XEROX_PAPER_SIZES, {
+    errorMap: () => ({ message: `Paper size must be one of: ${XEROX_PAPER_SIZES.join(', ')}` }),
+  }),
+  doubleSided: z.boolean().default(false),
+  specialInstructions: z
+    .string()
+    .max(500, 'Special instructions cannot exceed 500 characters')
+    .trim()
+    .optional(),
+});
+
+export type CreateXeroxOrderInput = z.infer<typeof createXeroxOrderSchema>;
 
 // ============================================
 // UPDATE STATUS SCHEMA
@@ -179,6 +247,22 @@ export function validateOrderIdParam(data: unknown): ValidationResult<OrderIdPar
 
 export function validateCancelOrder(data: unknown): ValidationResult<CancelOrderInput> {
   const result = cancelOrderSchema.safeParse(data);
+  if (result.success) {
+    return { success: true, data: result.data };
+  }
+  return { success: false, errors: result.error.issues };
+}
+
+export function validateCreateLaundryOrder(data: unknown): ValidationResult<CreateLaundryOrderInput> {
+  const result = createLaundryOrderSchema.safeParse(data);
+  if (result.success) {
+    return { success: true, data: result.data };
+  }
+  return { success: false, errors: result.error.issues };
+}
+
+export function validateCreateXeroxOrder(data: unknown): ValidationResult<CreateXeroxOrderInput> {
+  const result = createXeroxOrderSchema.safeParse(data);
   if (result.success) {
     return { success: true, data: result.data };
   }

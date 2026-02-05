@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { Shop, IShopDocument } from './shop.model.js';
 import { User } from '../users/user.model.js';
-import { CreateShopInput, UpdateShopInput, OwnerDetails } from './shop.validation.js';
+import { CreateShopInput, UpdateShopInput, OwnerDetails, UpdateOwnerDetails } from './shop.validation.js';
 import { logger } from '../../config/logger.js';
 
 const SALT_ROUNDS = 12;
@@ -247,6 +247,7 @@ export class ShopService {
 
   /**
    * Update a shop
+   * Optionally updates owner credentials if ownerDetails is provided
    */
   async updateShop(id: string, data: UpdateShopInput): Promise<IShopDocument | null> {
     try {
@@ -254,28 +255,91 @@ export class ShopService {
         return null;
       }
 
-      // Map ownerId to owner if provided
-      const updateData: Record<string, unknown> = { ...data };
-      if ('ownerId' in data) {
-        updateData['owner'] = data.ownerId ? new Types.ObjectId(data.ownerId) : null;
-        delete updateData['ownerId'];
-      }
+      const session = await mongoose.startSession();
+      session.startTransaction();
 
-      const shop = await Shop.findByIdAndUpdate(
-        id,
-        { $set: updateData },
-        { new: true, runValidators: true }
-      ).populate('owner', 'name email phone');
+      try {
+        // Map ownerId to owner if provided
+        const updateData: Record<string, unknown> = { ...data };
+        if ('ownerId' in data) {
+          updateData['owner'] = data.ownerId ? new Types.ObjectId(data.ownerId) : null;
+          delete updateData['ownerId'];
+        }
 
-      if (shop) {
+        // Handle owner details update separately
+        if ('ownerDetails' in updateData) {
+          delete updateData['ownerDetails'];
+        }
+
+        // Update shop
+        const shop = await Shop.findByIdAndUpdate(
+          id,
+          { $set: updateData },
+          { new: true, runValidators: true, session }
+        ).populate('owner', 'name email phone');
+
+        if (!shop) {
+          await session.abortTransaction();
+          return null;
+        }
+
+        // Update owner credentials if provided
+        if (data.ownerDetails && shop.owner) {
+          const ownerId = typeof shop.owner === 'object' && shop.owner !== null
+            ? (shop.owner as { _id: Types.ObjectId })._id
+            : shop.owner;
+
+          await this.updateOwnerCredentials(ownerId.toString(), data.ownerDetails, session);
+          logger.info('Owner credentials updated', { shopId: id, ownerId: ownerId.toString() });
+        }
+
+        await session.commitTransaction();
+
+        // Re-populate owner after transaction
+        await shop.populate('owner', 'name email phone');
+
         logger.info(`Shop updated: ${shop.name}`, { shopId: id });
+        return shop;
+      } catch (error) {
+        await session.abortTransaction();
+        throw error;
+      } finally {
+        session.endSession();
       }
-
-      return shop;
     } catch (error) {
       logger.error('Error updating shop:', { error, shopId: id, data });
       throw error;
     }
+  }
+
+  /**
+   * Update owner credentials (name, password, phone)
+   */
+  private async updateOwnerCredentials(
+    ownerId: string,
+    details: UpdateOwnerDetails,
+    session: mongoose.ClientSession
+  ): Promise<void> {
+    const owner = await User.findById(ownerId).session(session);
+    if (!owner) {
+      throw new Error('Owner not found');
+    }
+
+    // Update fields
+    if (details.name) {
+      owner.name = details.name;
+    }
+
+    if (details.phone !== undefined) {
+      owner.phone = details.phone || undefined;
+    }
+
+    if (details.password) {
+      const passwordHash = await bcrypt.hash(details.password, SALT_ROUNDS);
+      owner.passwordHash = passwordHash;
+    }
+
+    await owner.save({ session });
   }
 
   /**

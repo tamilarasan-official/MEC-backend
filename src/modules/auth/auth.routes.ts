@@ -7,7 +7,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authController } from './auth.controller.js';
 import { authenticate } from './auth.middleware.js';
-import { validate, registerSchema, loginSchema, refreshTokenSchema } from './auth.validation.js';
+import { validate, registerSchema, loginSchema, refreshTokenSchema, changePasswordSchema } from './auth.validation.js';
 import { RateLimitConfig } from '../../config/constants.js';
 
 // ============================================
@@ -118,6 +118,18 @@ router.get(
   '/me',
   authenticate,
   authController.me
+);
+
+/**
+ * PUT /auth/change-password
+ * Change current user's password
+ * Protected - requires authentication
+ */
+router.put(
+  '/change-password',
+  authenticate,
+  validate(changePasswordSchema),
+  authController.changePassword
 );
 
 // ============================================

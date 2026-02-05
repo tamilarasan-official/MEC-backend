@@ -88,11 +88,37 @@ router.get(
 );
 
 // ============================================
+// SERVICE ORDER ROUTES
+// ============================================
+
+/**
+ * Create a laundry order
+ * POST /api/v1/orders/laundry
+ * Role: student
+ */
+router.post(
+  '/laundry',
+  requireAuth('student'),
+  orderController.createLaundryOrder
+);
+
+/**
+ * Create a xerox order
+ * POST /api/v1/orders/xerox
+ * Role: student
+ */
+router.post(
+  '/xerox',
+  requireAuth('student'),
+  orderController.createXeroxOrder
+);
+
+// ============================================
 // ROOT ROUTE
 // ============================================
 
 /**
- * Create a new order
+ * Create a new food order
  * POST /api/v1/orders
  * Role: student
  */

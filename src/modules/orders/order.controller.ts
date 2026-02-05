@@ -12,6 +12,8 @@ import {
   validateOrderQuery,
   validateOrderIdParam,
   validateCancelOrder,
+  validateCreateLaundryOrder,
+  validateCreateXeroxOrder,
 } from './order.validation.js';
 import { AppError, asyncHandler } from '../../shared/middleware/error.middleware.js';
 import { HttpStatus } from '../../config/constants.js';
@@ -76,6 +78,68 @@ export class OrderController {
           qrData: result.qrData,
         },
         'Order created successfully'
+      )
+    );
+  });
+
+  /**
+   * Create a laundry order
+   * POST /orders/laundry
+   * Role: student
+   */
+  createLaundryOrder = asyncHandler(async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
+    const user = req.user as AuthUser;
+
+    // Validate request body
+    const validation = validateCreateLaundryOrder(req.body);
+    if (!validation.success) {
+      throw AppError.validation('Validation failed', validation.errors);
+    }
+
+    // Create laundry order
+    const result = await orderService.createLaundryOrder(user.id, validation.data);
+
+    // Emit new order event to shop
+    orderEvents.emitNewOrder(validation.data.shopId, result.order);
+
+    res.status(HttpStatus.CREATED).json(
+      successResponse(
+        {
+          order: result.order,
+          qrData: result.qrData,
+        },
+        'Laundry order created successfully'
+      )
+    );
+  });
+
+  /**
+   * Create a xerox order
+   * POST /orders/xerox
+   * Role: student
+   */
+  createXeroxOrder = asyncHandler(async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
+    const user = req.user as AuthUser;
+
+    // Validate request body
+    const validation = validateCreateXeroxOrder(req.body);
+    if (!validation.success) {
+      throw AppError.validation('Validation failed', validation.errors);
+    }
+
+    // Create xerox order
+    const result = await orderService.createXeroxOrder(user.id, validation.data);
+
+    // Emit new order event to shop
+    orderEvents.emitNewOrder(validation.data.shopId, result.order);
+
+    res.status(HttpStatus.CREATED).json(
+      successResponse(
+        {
+          order: result.order,
+          qrData: result.qrData,
+        },
+        'Xerox order created successfully'
       )
     );
   });

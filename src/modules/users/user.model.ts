@@ -57,6 +57,11 @@ export interface IUser {
   // Activity tracking
   lastLoginAt?: Date;
 
+  // Security: Account lockout
+  failedLoginAttempts: number;
+  lastFailedLoginAt?: Date;
+  accountLockedUntil?: Date;
+
   // Timestamps
   createdAt: Date;
   updatedAt: Date;
@@ -201,6 +206,18 @@ const UserSchema = new Schema<IUserDocument, IUserModel>(
 
     // Activity tracking
     lastLoginAt: {
+      type: Date,
+    },
+
+    // Security: Account lockout
+    failedLoginAttempts: {
+      type: Number,
+      default: 0,
+    },
+    lastFailedLoginAt: {
+      type: Date,
+    },
+    accountLockedUntil: {
       type: Date,
     },
   },

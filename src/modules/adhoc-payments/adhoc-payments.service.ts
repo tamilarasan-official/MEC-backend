@@ -2,7 +2,7 @@ import mongoose, { Types, FilterQuery, ClientSession } from 'mongoose';
 import { PaymentRequest, IPaymentRequestDocument, PaymentRequestStatus } from './payment-request.model.js';
 import { PaymentSubmission, IPaymentSubmissionDocument } from './payment-submission.model.js';
 import { User, IUserDocument } from '../users/user.model.js';
-import { Transaction } from '../wallet/transaction.model.js';
+import { getCurrentTransactionModel } from '../wallet/monthly-transaction.util.js';
 import { logger } from '../../config/logger.js';
 import {
   CreatePaymentRequestInput,
@@ -568,23 +568,27 @@ export class AdhocPaymentsService {
       student.balance = balanceAfter;
       await student.save({ session });
 
-      // Create transaction record
-      const transaction = new Transaction({
-        user: student._id,
-        type: 'debit',
-        amount,
-        balanceBefore,
-        balanceAfter,
-        source: 'adhoc_payment',
-        description: `Payment for: ${request.title}`,
-        status: 'completed',
-        metadata: {
-          paymentRequestId: request._id.toString(),
-          paymentRequestTitle: request.title,
-        },
-      });
-
-      await transaction.save({ session });
+      // Create transaction record in monthly collection
+      const TransactionModel = getCurrentTransactionModel();
+      const [transaction] = await TransactionModel.create(
+        [
+          {
+            user: student._id,
+            type: 'debit',
+            amount,
+            balanceBefore,
+            balanceAfter,
+            source: 'adhoc_payment',
+            description: `Payment for: ${request.title}`,
+            status: 'completed',
+            metadata: {
+              paymentRequestId: request._id.toString(),
+              paymentRequestTitle: request.title,
+            },
+          },
+        ],
+        { session }
+      );
 
       // Update submission
       submission.status = 'paid';
@@ -592,9 +596,9 @@ export class AdhocPaymentsService {
       submission.transaction = transaction._id;
       await submission.save({ session });
 
-      // Update request stats
-      request.paidCount += 1;
-      request.totalCollected += amount;
+      // Update request stats (ensure fields are initialized to avoid NaN for older documents)
+      request.paidCount = (request.paidCount || 0) + 1;
+      request.totalCollected = (request.totalCollected || 0) + amount;
       await request.save({ session });
 
       await session.commitTransaction();
@@ -605,6 +609,8 @@ export class AdhocPaymentsService {
         amount,
         newBalance: balanceAfter,
         transactionId: transaction._id,
+        paidCount: request.paidCount,
+        totalCollected: request.totalCollected,
       });
 
       return {

@@ -1,11 +1,27 @@
 import 'dotenv/config';
 import http from 'http';
-import { Server as SocketIOServer } from 'socket.io';
+import { Server as SocketIOServer, Socket } from 'socket.io';
+import jwt from 'jsonwebtoken';
 import app from './app.js';
 import { connectDatabase, disconnectDatabase } from './config/database.js';
 import { logger } from './config/logger.js';
-import { SocketEvents } from './config/constants.js';
+import { SocketEvents, JwtConfig } from './config/constants.js';
 import { orderEvents } from './modules/orders/order.events.js';
+import { Order } from './modules/orders/order.model.js';
+
+// Socket authentication middleware types
+interface SocketUser {
+  id: string;
+  role: string;
+  email: string;
+  shopId?: string;
+}
+
+interface AuthenticatedSocket extends Socket {
+  data: {
+    user?: SocketUser;
+  };
+}
 
 // Server configuration
 const PORT = parseInt(process.env['PORT'] ?? '3000', 10);
@@ -61,20 +77,86 @@ const io = new SocketIOServer(server, {
 orderEvents.initialize(io);
 logger.info('Order events system initialized with Socket.IO');
 
+// Socket.IO authentication middleware
+io.use((socket: AuthenticatedSocket, next) => {
+  const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+
+  // Allow connection without token for public events, but mark as unauthenticated
+  if (!token) {
+    logger.debug('Socket connection without token', { socketId: socket.id });
+    return next();
+  }
+
+  try {
+    const secret = process.env['JWT_ACCESS_SECRET'] || process.env['JWT_SECRET'];
+    if (!secret) {
+      logger.error('JWT secret not configured for socket authentication');
+      return next(new Error('Server configuration error'));
+    }
+
+    const decoded = jwt.verify(token as string, secret, {
+      issuer: JwtConfig.ISSUER,
+      audience: JwtConfig.AUDIENCE,
+    }) as { sub: string; role: string; email: string; shopId?: string };
+
+    socket.data.user = {
+      id: decoded.sub,
+      role: decoded.role,
+      email: decoded.email,
+      shopId: decoded.shopId,
+    };
+
+    logger.debug('Socket authenticated', { socketId: socket.id, userId: decoded.sub, role: decoded.role });
+    next();
+  } catch (err) {
+    logger.warn('Socket authentication failed', { socketId: socket.id, error: err instanceof Error ? err.message : 'Unknown error' });
+    next(new Error('Authentication failed'));
+  }
+});
+
 // Socket.IO connection handling
-io.on(SocketEvents.CONNECT, (socket) => {
-  logger.info('Client connected', { socketId: socket.id });
+io.on(SocketEvents.CONNECT, (socket: AuthenticatedSocket) => {
+  const user = socket.data.user;
+  logger.info('Client connected', { socketId: socket.id, userId: user?.id, role: user?.role });
 
-  // Handle authentication (to be implemented with JWT)
-  socket.on('authenticate', (token: string) => {
-    // TODO: Verify JWT token and join user-specific rooms
-    logger.debug('Authentication attempt', { socketId: socket.id, hasToken: !!token });
-  });
+  // Join room for order updates (with authorization)
+  socket.on('join:order', async (orderId: string) => {
+    if (!user) {
+      socket.emit('error', { message: 'Authentication required to join order room' });
+      return;
+    }
 
-  // Join room for order updates
-  socket.on('join:order', (orderId: string) => {
-    socket.join(`order:${orderId}`);
-    logger.debug('Joined order room', { socketId: socket.id, orderId });
+    try {
+      // Validate orderId format
+      if (!/^[0-9a-fA-F]{24}$/.test(orderId)) {
+        socket.emit('error', { message: 'Invalid order ID format' });
+        return;
+      }
+
+      // Verify user has access to this order
+      const order = await Order.findById(orderId).select('user shop');
+      if (!order) {
+        socket.emit('error', { message: 'Order not found' });
+        return;
+      }
+
+      const isOrderOwner = order.user.toString() === user.id;
+      const isShopStaff = user.shopId && order.shop.toString() === user.shopId;
+      const isAdmin = ['accountant', 'superadmin'].includes(user.role);
+
+      if (!isOrderOwner && !isShopStaff && !isAdmin) {
+        socket.emit('error', { message: 'Not authorized to access this order' });
+        logger.warn('Unauthorized order room access attempt', { socketId: socket.id, userId: user.id, orderId });
+        return;
+      }
+
+      socket.join(`order:${orderId}`);
+      socket.emit('joined:order', { orderId });
+      logger.debug('Joined order room', { socketId: socket.id, userId: user.id, orderId });
+    } catch (error) {
+      logger.error('Error joining order room', { socketId: socket.id, error: error instanceof Error ? error.message : 'Unknown error' });
+      socket.emit('error', { message: 'Failed to join order room' });
+    }
   });
 
   // Leave order room
@@ -83,27 +165,88 @@ io.on(SocketEvents.CONNECT, (socket) => {
     logger.debug('Left order room', { socketId: socket.id, orderId });
   });
 
-  // Join room for vendor updates
+  // Join room for vendor updates (with authorization)
   socket.on('join:vendor', (vendorId: string) => {
+    if (!user) {
+      socket.emit('error', { message: 'Authentication required to join vendor room' });
+      return;
+    }
+
+    // Only shop staff can join their own vendor room
+    const isShopStaff = user.shopId && user.shopId === vendorId;
+    const isAdmin = ['accountant', 'superadmin'].includes(user.role);
+
+    if (!isShopStaff && !isAdmin) {
+      socket.emit('error', { message: 'Not authorized to access this vendor room' });
+      logger.warn('Unauthorized vendor room access attempt', { socketId: socket.id, userId: user.id, vendorId });
+      return;
+    }
+
     socket.join(`vendor:${vendorId}`);
-    logger.debug('Joined vendor room', { socketId: socket.id, vendorId });
+    socket.emit('joined:vendor', { vendorId });
+    logger.debug('Joined vendor room', { socketId: socket.id, userId: user.id, vendorId });
   });
 
-  // Handle delivery location updates
+  // Join user room for personal notifications (students, all users)
+  socket.on('join:user', (userId: string) => {
+    if (!user) {
+      socket.emit('error', { message: 'Authentication required to join user room' });
+      return;
+    }
+
+    // Users can only join their own room
+    if (userId !== user.id) {
+      socket.emit('error', { message: 'Cannot join another user\'s room' });
+      return;
+    }
+
+    socket.join(`user:${userId}`);
+    socket.emit('joined:user', { userId });
+    logger.debug('Joined user room', { socketId: socket.id, userId: user.id });
+  });
+
+  // Join shop room for shop staff (captains, owners)
+  socket.on('join:shop', (shopId: string) => {
+    if (!user) {
+      socket.emit('error', { message: 'Authentication required to join shop room' });
+      return;
+    }
+
+    // Only shop staff can join their own shop room
+    const isShopStaff = user.shopId && user.shopId === shopId;
+    const isAdmin = ['accountant', 'superadmin'].includes(user.role);
+
+    if (!isShopStaff && !isAdmin) {
+      socket.emit('error', { message: 'Not authorized to access this shop room' });
+      logger.warn('Unauthorized shop room access attempt', { socketId: socket.id, userId: user.id, shopId });
+      return;
+    }
+
+    socket.join(`shop:${shopId}`);
+    socket.emit('joined:shop', { shopId });
+    logger.debug('Joined shop room', { socketId: socket.id, userId: user.id, shopId });
+  });
+
+  // Handle delivery location updates (requires authentication)
   socket.on(SocketEvents.DELIVERY_LOCATION_UPDATE, (data: { orderId: string; location: { lat: number; lng: number } }) => {
+    if (!user) {
+      socket.emit('error', { message: 'Authentication required' });
+      return;
+    }
+
     // Broadcast to order room
     io.to(`order:${data.orderId}`).emit(SocketEvents.DELIVERY_LOCATION_UPDATE, data);
-    logger.debug('Delivery location update', { orderId: data.orderId });
+    logger.debug('Delivery location update', { orderId: data.orderId, userId: user.id });
   });
 
   // Handle disconnection
   socket.on(SocketEvents.DISCONNECT, (reason) => {
-    logger.info('Client disconnected', { socketId: socket.id, reason });
+    logger.info('Client disconnected', { socketId: socket.id, userId: user?.id, reason });
   });
 
   // Handle errors
   socket.on(SocketEvents.ERROR, (error: Error) => {
-    logger.error('Socket error', { socketId: socket.id, error: error.message });
+    logger.error('Socket error', { socketId: socket.id, userId: user?.id, error: error.message });
   });
 });
 
