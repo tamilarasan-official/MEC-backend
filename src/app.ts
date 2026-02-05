@@ -19,6 +19,7 @@ import { superadminRoutes } from './modules/superadmin/index.js';
 import { uploadRoutes } from './modules/uploads/index.js';
 import imageProxyRoutes from './modules/uploads/image-proxy.routes.js';
 import { adhocPaymentsSuperadminRoutes, adhocPaymentsStudentRoutes } from './modules/adhoc-payments/index.js';
+import { ownerRoutes } from './modules/owner/index.js';
 
 // Import shared error class
 import { AppError } from './shared/middleware/error.middleware.js';
@@ -265,6 +266,7 @@ app.use(`${API_VERSION}/orders`, orderRoutes);
 
 // Owner routes
 app.use(`${API_VERSION}/owner`, menuOwnerRoutes);
+app.use(`${API_VERSION}/owner`, ownerRoutes);
 
 // Superadmin routes
 app.use(`${API_VERSION}/superadmin/shops`, shopSuperadminRoutes);

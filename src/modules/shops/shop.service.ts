@@ -1,7 +1,12 @@
 import { Types } from 'mongoose';
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 import { Shop, IShopDocument } from './shop.model.js';
-import { CreateShopInput, UpdateShopInput } from './shop.validation.js';
+import { User } from '../users/user.model.js';
+import { CreateShopInput, UpdateShopInput, OwnerDetails } from './shop.validation.js';
 import { logger } from '../../config/logger.js';
+
+const SALT_ROUNDS = 12;
 
 export class ShopService {
   /**
@@ -46,28 +51,139 @@ export class ShopService {
 
   /**
    * Create a new shop (superadmin only)
+   * Optionally creates an owner user if ownerDetails is provided
    */
-  async createShop(data: CreateShopInput): Promise<IShopDocument> {
+  async createShop(data: CreateShopInput): Promise<{ shop: IShopDocument; owner?: { id: string; email: string; name: string } }> {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
+      let ownerId: Types.ObjectId | undefined;
+      let createdOwner: { id: string; email: string; name: string } | undefined;
+
+      // If ownerDetails provided, create new owner user
+      if (data.ownerDetails) {
+        const { name, email, password, phone } = data.ownerDetails;
+
+        // Check if email already exists
+        const existingUser = await User.findOne({ email: email.toLowerCase() }).session(session);
+        if (existingUser) {
+          throw new Error(`User with email ${email} already exists`);
+        }
+
+        // Generate username from email
+        const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_');
+
+        // Check username uniqueness
+        let finalUsername = username;
+        let counter = 1;
+        while (await User.findOne({ username: finalUsername }).session(session)) {
+          finalUsername = `${username}_${counter}`;
+          counter++;
+        }
+
+        // Hash password
+        const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+
+        // Create shop first (without owner) to get the shop ID
+        const shopData = {
+          name: data.name,
+          description: data.description,
+          category: data.category,
+          imageUrl: data.imageUrl,
+          bannerUrl: data.bannerUrl,
+          operatingHours: data.operatingHours,
+          contactPhone: data.contactPhone,
+        };
+
+        const shop = new Shop(shopData);
+        await shop.save({ session });
+
+        // Now create owner with shop reference
+        const ownerUser = new User({
+          username: finalUsername,
+          passwordHash,
+          name,
+          email: email.toLowerCase(),
+          phone,
+          role: 'owner',
+          isApproved: true, // Owners are auto-approved
+          isActive: true,
+          balance: 0,
+          shop: shop._id,
+        });
+
+        await ownerUser.save({ session });
+
+        // Update shop with owner reference
+        shop.owner = ownerUser._id;
+        await shop.save({ session });
+
+        await session.commitTransaction();
+
+        // Populate owner before returning
+        await shop.populate('owner', 'name email phone');
+
+        logger.info(`Shop created with new owner: ${shop.name}`, {
+          shopId: shop._id,
+          ownerId: ownerUser._id,
+          ownerEmail: email,
+        });
+
+        return {
+          shop,
+          owner: {
+            id: ownerUser._id.toString(),
+            email: ownerUser.email,
+            name: ownerUser.name,
+          },
+        };
+      }
+
+      // No ownerDetails, use existing ownerId if provided
+      if (data.ownerId) {
+        ownerId = new Types.ObjectId(data.ownerId);
+
+        // Update the owner's shop reference
+        await User.findByIdAndUpdate(
+          ownerId,
+          { shop: null }, // Will be updated after shop creation
+          { session }
+        );
+      }
+
       const shopData = {
-        ...data,
-        owner: data.ownerId ? new Types.ObjectId(data.ownerId) : undefined,
+        name: data.name,
+        description: data.description,
+        category: data.category,
+        owner: ownerId,
+        imageUrl: data.imageUrl,
+        bannerUrl: data.bannerUrl,
+        operatingHours: data.operatingHours,
+        contactPhone: data.contactPhone,
       };
 
-      // Remove ownerId from shopData since we mapped it to owner
-      const { ownerId: _ownerId, ...cleanData } = shopData;
+      const shop = new Shop(shopData);
+      await shop.save({ session });
 
-      const shop = new Shop(cleanData);
-      await shop.save();
+      // Update owner's shop reference if ownerId provided
+      if (ownerId) {
+        await User.findByIdAndUpdate(ownerId, { shop: shop._id }, { session });
+      }
+
+      await session.commitTransaction();
 
       // Populate owner before returning
       await shop.populate('owner', 'name email phone');
 
       logger.info(`Shop created: ${shop.name}`, { shopId: shop._id });
-      return shop;
+      return { shop };
     } catch (error) {
+      await session.abortTransaction();
       logger.error('Error creating shop:', { error, data });
       throw error;
+    } finally {
+      session.endSession();
     }
   }
 

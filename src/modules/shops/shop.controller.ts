@@ -105,6 +105,7 @@ export class ShopController {
 
   /**
    * POST /superadmin/shops - Create shop (superadmin only)
+   * Optionally creates owner if ownerDetails provided
    */
   async createShop(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -128,21 +129,39 @@ export class ShopController {
         return;
       }
 
-      const shop = await shopService.createShop(bodyResult.data);
+      const result = await shopService.createShop(bodyResult.data);
 
       logger.info(`Shop created by superadmin`, {
-        shopId: shop._id,
-        shopName: shop.name,
+        shopId: result.shop._id,
+        shopName: result.shop.name,
         userId: req.user?.id,
+        ownerCreated: !!result.owner,
       });
 
       res.status(HttpStatus.CREATED).json({
         success: true,
-        data: transformShop(shop),
-        message: 'Shop created successfully',
+        data: {
+          shop: transformShop(result.shop),
+          owner: result.owner,
+        },
+        message: result.owner
+          ? 'Shop and owner created successfully'
+          : 'Shop created successfully',
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
+      // Handle duplicate email error specifically
+      if (error instanceof Error && error.message.includes('already exists')) {
+        res.status(HttpStatus.CONFLICT).json({
+          success: false,
+          error: {
+            code: 'DUPLICATE_EMAIL',
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
       next(error);
     }
   }
