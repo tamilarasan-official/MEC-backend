@@ -14,9 +14,14 @@ import { HttpStatus } from '../../config/constants.js';
 // ============================================
 
 // Use JWT_ACCESS_SECRET for access tokens, fallback to JWT_SECRET
-const JWT_SECRET = process.env['JWT_ACCESS_SECRET'] || process.env['JWT_SECRET'] || 'your-super-secret-jwt-key-change-in-production';
+const JWT_SECRET = process.env['JWT_ACCESS_SECRET'] || process.env['JWT_SECRET'];
 const JWT_ISSUER = process.env['JWT_ISSUER'] || 'mecfoodapp';
 const JWT_AUDIENCE = process.env['JWT_AUDIENCE'] || 'mecfoodapp-users';
+
+// Validate JWT secret is configured
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET or JWT_ACCESS_SECRET environment variable is required');
+}
 
 // ============================================
 // TOKEN EXTRACTION
@@ -55,18 +60,13 @@ function extractToken(req: Request): string | null {
  */
 function verifyToken(token: string): JwtPayload {
   try {
-    console.log('[AUTH] Verifying token with secret:', JWT_SECRET.substring(0, 10) + '...');
-    console.log('[AUTH] Issuer:', JWT_ISSUER, 'Audience:', JWT_AUDIENCE);
-
     const decoded = jwt.verify(token, JWT_SECRET, {
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
     }) as JwtPayload;
 
-    console.log('[AUTH] Token verified successfully for:', decoded.sub);
     return decoded;
   } catch (error) {
-    console.log('[AUTH] Token verification error:', error instanceof Error ? error.message : error);
     // Check error by name since ES module imports may not work with instanceof
     if (error instanceof Error) {
       if (error.name === 'TokenExpiredError') {
@@ -175,36 +175,17 @@ export function requireAuth(...roles: string[]) {
         });
 
         const roleMatch = normalizedRoles.includes(normalizedUserRole);
-        console.log('[AUTH] Role check:', {
-          userId: req.user.id,
-          originalRole: req.user.role,
-          normalizedUserRole,
-          requiredRoles: roles,
-          normalizedRoles,
-          path: req.path,
-          method: req.method,
-          roleMatch,
-        });
 
         if (!roleMatch) {
-          console.log('[AUTH] Access DENIED:', {
-            userId: req.user.id,
-            userRole: req.user.role,
-            normalizedUserRole,
-            requiredRoles: normalizedRoles,
-            endpoint: `${req.method} ${req.path}`,
-          });
           return next(
             new AppError(
-              `Access denied. Your role '${req.user.role}' (normalized: '${normalizedUserRole}') is not authorized for ${req.method} ${req.path}. Required roles: ${normalizedRoles.join(', ')}`,
+              'Access denied. Insufficient permissions for this resource.',
               HttpStatus.FORBIDDEN,
               'INSUFFICIENT_ROLE',
               true
             )
           );
         }
-
-        console.log('[AUTH] Access GRANTED:', { userId: req.user.id, role: normalizedUserRole, endpoint: `${req.method} ${req.path}` });
       }
 
       next();

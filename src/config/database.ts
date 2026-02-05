@@ -1,16 +1,17 @@
 import mongoose from 'mongoose';
 import { logger } from './logger.js';
 
-const DEFAULT_MONGODB_URI =
-  'mongodb+srv://doadmin:hv4j5lOpX2813W67@mecfoodapp-db-13d8f7f1.mongo.ondigitalocean.com/admin?tls=true&authSource=admin&replicaSet=mecfoodapp-db';
-
 interface DatabaseConfig {
   uri: string;
   options: mongoose.ConnectOptions;
 }
 
 const getDatabaseConfig = (): DatabaseConfig => {
-  const uri = process.env['MONGODB_URI'] ?? DEFAULT_MONGODB_URI;
+  const uri = process.env['MONGODB_URI'];
+
+  if (!uri) {
+    throw new Error('MONGODB_URI environment variable is required');
+  }
 
   const options: mongoose.ConnectOptions = {
     maxPoolSize: 10,
