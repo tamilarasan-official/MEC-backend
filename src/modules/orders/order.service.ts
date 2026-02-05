@@ -335,6 +335,8 @@ export class OrderService {
     const [orders, total] = await Promise.all([
       Order.find(query)
         .populate('user', 'name email phone rollNumber')
+        .populate('shop', 'name')
+        .populate('items.foodItem', 'name imageUrl')
         .populate('handledBy', 'name')
         .sort({ placedAt: -1 })
         .skip(skip)
@@ -560,8 +562,9 @@ export class OrderService {
       query['shop'] = new Types.ObjectId(shopId);
     }
     return Order.find(query)
-      .populate('user', 'name phone rollNumber')
+      .populate('user', 'name phone rollNumber email')
       .populate('shop', 'name')
+      .populate('items.foodItem', 'name imageUrl')
       .sort({ placedAt: 1 });
   }
 
