@@ -7,6 +7,7 @@ import rateLimit, { RateLimitRequestHandler, Options } from 'express-rate-limit'
 import { Request, Response } from 'express';
 import { RateLimitConfig, HttpStatus } from '../../config/constants.js';
 import { ErrorResponse } from '../types/index.js';
+import { recordViolation } from './ip-block.middleware.js';
 
 // ============================================
 // RATE LIMIT RESPONSE HANDLER
@@ -14,8 +15,13 @@ import { ErrorResponse } from '../types/index.js';
 
 /**
  * Custom rate limit exceeded handler
+ * Also records violation for IP blocking
  */
 function rateLimitHandler(req: Request, res: Response): void {
+  // Record this violation for potential IP blocking
+  const ip = getClientIpForRateLimit(req);
+  recordViolation(ip);
+
   const response: ErrorResponse = {
     success: false,
     error: {
@@ -30,6 +36,17 @@ function rateLimitHandler(req: Request, res: Response): void {
   };
 
   res.status(HttpStatus.TOO_MANY_REQUESTS).json(response);
+}
+
+/**
+ * Get client IP for rate limiting (extracted for reuse)
+ */
+function getClientIpForRateLimit(req: Request): string {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  const ip = Array.isArray(forwardedFor)
+    ? forwardedFor[0]
+    : forwardedFor?.split(',')[0]?.trim() ?? req.ip ?? 'unknown';
+  return ip;
 }
 
 /**
@@ -199,6 +216,25 @@ export const paymentRateLimiter = createRateLimiter({
       return `payment:${req.user.id}`;
     }
     return `payment:${req.ip ?? 'unknown'}`;
+  },
+});
+
+/**
+ * Unauthenticated request rate limiter
+ * Stricter limits for requests without valid auth tokens
+ * 30 requests per 15 minutes
+ */
+export const unauthenticatedRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30,
+  message: 'Too many requests. Please authenticate or try again later.',
+  keyGenerator: (req: Request): string => {
+    // Only apply to unauthenticated requests
+    return `unauth:${req.ip ?? 'unknown'}`;
+  },
+  skip: (req: Request): boolean => {
+    // Skip if user is authenticated
+    return !!req.user?.id;
   },
 });
 

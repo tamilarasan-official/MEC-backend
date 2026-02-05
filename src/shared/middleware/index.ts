@@ -47,9 +47,27 @@ export {
   searchRateLimiter,
   orderRateLimiter,
   paymentRateLimiter,
+  unauthenticatedRateLimiter,
   createCustomRateLimiter,
   slidingWindowRateLimiter,
 } from './rate-limit.middleware.js';
+
+// IP Blocking
+export {
+  checkIpBlock,
+  recordViolation,
+  isIpBlocked,
+  getBlockStats,
+  manualBlock,
+  manualUnblock,
+} from './ip-block.middleware.js';
+
+// CSRF Protection
+export {
+  csrfTokenGenerator,
+  csrfValidator,
+  csrfProtection,
+} from './csrf.middleware.js';
 
 // Validation
 export {

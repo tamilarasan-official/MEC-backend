@@ -8,6 +8,19 @@ import { logger } from '../../config/logger.js';
 
 const SALT_ROUNDS = 12;
 
+/**
+ * Mask email for logging (security)
+ * e.g., "john.doe@example.com" -> "jo***@example.com"
+ */
+function maskEmail(email: string): string {
+  const [localPart, domain] = email.split('@');
+  if (!domain) return '***@***';
+  const masked = localPart.length > 2
+    ? localPart.slice(0, 2) + '***'
+    : '***';
+  return `${masked}@${domain}`;
+}
+
 export class ShopService {
   /**
    * Get all shops with optional filtering
@@ -70,21 +83,23 @@ export class ShopService {
 
       // If ownerDetails provided, create new owner user
       if (data.ownerDetails) {
+        // Mask email in logs for security
+        const maskedEmail = maskEmail(data.ownerDetails.email);
         logger.info('Creating owner user with details:', {
           name: data.ownerDetails.name,
-          email: data.ownerDetails.email,
+          email: maskedEmail,
           hasPassword: !!data.ownerDetails.password,
-          phone: data.ownerDetails.phone,
+          hasPhone: !!data.ownerDetails.phone,
         });
 
         const { name, email, password, phone } = data.ownerDetails;
 
         // Check if email already exists
         const emailToCheck = email.toLowerCase();
-        logger.info('Checking if email exists:', { email: emailToCheck });
+        logger.info('Checking if email exists:', { email: maskedEmail });
         const existingUser = await User.findOne({ email: emailToCheck }).session(session);
         logger.info('Email check result:', {
-          email: emailToCheck,
+          email: maskedEmail,
           found: !!existingUser,
           existingUserId: existingUser?._id?.toString(),
         });
@@ -140,7 +155,7 @@ export class ShopService {
         await ownerUser.save({ session });
         logger.info('Owner user created successfully:', {
           userId: ownerUser._id.toString(),
-          email: ownerUser.email,
+          email: maskEmail(ownerUser.email),
           role: ownerUser.role,
           shopId: ownerUser.shop?.toString(),
         });
@@ -162,7 +177,7 @@ export class ShopService {
         logger.info(`Shop created with new owner: ${shop.name}`, {
           shopId: shop._id,
           ownerId: ownerUser._id,
-          ownerEmail: email,
+          ownerEmail: maskedEmail,
         });
 
         return {
@@ -225,11 +240,11 @@ export class ShopService {
         stack: error instanceof Error ? error.stack : undefined,
         shopName: data.name,
         category: data.category,
-        ownerEmail: data.ownerDetails?.email,
+        ownerEmail: data.ownerDetails?.email ? maskEmail(data.ownerDetails.email) : undefined,
         mongoErrorCode: mongoError.code,
         isDuplicateKeyError,
         keyPattern: mongoError.keyPattern,
-        keyValue: mongoError.keyValue,
+        // Don't log keyValue as it may contain sensitive data
       });
 
       // Convert MongoDB duplicate key error to user-friendly message

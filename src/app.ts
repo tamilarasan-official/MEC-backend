@@ -25,6 +25,12 @@ import { ownerRoutes } from './modules/owner/index.js';
 // Import shared error class
 import { AppError } from './shared/middleware/error.middleware.js';
 
+// Import CSRF middleware
+import { csrfProtection } from './shared/middleware/csrf.middleware.js';
+
+// Import IP blocking middleware
+import { checkIpBlock } from './shared/middleware/ip-block.middleware.js';
+
 // Re-export AppError for backwards compatibility
 export { AppError };
 
@@ -32,8 +38,37 @@ export { AppError };
 const app: Express = express();
 
 // Helper function to check if origin is allowed
+// Uses proper hostname parsing to prevent bypass attacks
 function isAllowedOrigin(origin: string): boolean {
-  return origin.includes('welocalhost.com') || origin.includes('localhost') || origin.includes('127.0.0.1');
+  try {
+    const url = new URL(origin);
+    const hostname = url.hostname.toLowerCase();
+
+    // Allow localhost for development
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return true;
+    }
+
+    // Allow exact domain
+    if (hostname === 'welocalhost.com') {
+      return true;
+    }
+
+    // Allow subdomains (must end with .welocalhost.com)
+    if (hostname.endsWith('.welocalhost.com')) {
+      // Prevent subdomain takeover patterns like evil.com.welocalhost.com
+      // by ensuring no additional dots before welocalhost.com
+      const subdomain = hostname.slice(0, -'.welocalhost.com'.length);
+      if (subdomain.length > 0 && /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/i.test(subdomain)) {
+        return true;
+      }
+    }
+
+    return false;
+  } catch {
+    // Invalid URL
+    return false;
+  }
 }
 
 // Trust proxy (for rate limiting behind reverse proxy)
@@ -59,7 +94,7 @@ function setCorsHeaders(res: Response, origin: string): void {
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control, X-CSRF-Token');
   res.setHeader('Access-Control-Max-Age', '86400');
 }
 
@@ -85,23 +120,20 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // Also use cors middleware as backup
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin
+    // Allow requests with no origin (server-to-server, same-origin)
     if (!origin) {
       return callback(null, true);
     }
-    // Allow all welocalhost.com subdomains
-    if (origin.includes('welocalhost.com')) {
+    // Use the same isAllowedOrigin function for consistency
+    if (isAllowedOrigin(origin)) {
       return callback(null, origin);
     }
-    // Allow localhost in development
-    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-      return callback(null, origin);
-    }
+    logger.warn('CORS blocked origin', { origin });
     callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'Cache-Control'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'Cache-Control', 'X-CSRF-Token'],
 };
 
 app.use(cors(corsOptions));
@@ -143,6 +175,13 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Cookie parser middleware (for httpOnly refresh token cookies)
 app.use(cookieParser());
+
+// IP blocking middleware - check if IP is blocked before processing requests
+app.use(checkIpBlock);
+
+// CSRF protection for API routes
+// Generates token on all requests, validates on state-changing requests (POST, PUT, PATCH, DELETE)
+app.use('/api/v1', csrfProtection);
 
 // General rate limiting
 const generalLimiter = rateLimit({

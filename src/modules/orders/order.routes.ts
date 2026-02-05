@@ -6,6 +6,17 @@
 import { Router } from 'express';
 import { orderController } from './order.controller.js';
 import { authenticate, requireAuth } from '../../shared/middleware/auth.middleware.js';
+import { validate, validateParams, validateQuery } from '../../shared/middleware/validate.middleware.js';
+import {
+  createOrderSchema,
+  createLaundryOrderSchema,
+  createXeroxOrderSchema,
+  updateStatusSchema,
+  verifyQrSchema,
+  orderQuerySchema,
+  orderIdParamSchema,
+  cancelOrderSchema,
+} from './order.validation.js';
 
 // ============================================
 // ROUTER CONFIGURATION
@@ -25,6 +36,7 @@ const router = Router();
 router.get(
   '/my',
   requireAuth('student'),
+  validateQuery(orderQuerySchema),
   orderController.getUserOrders
 );
 
@@ -36,6 +48,7 @@ router.get(
 router.post(
   '/verify-qr',
   requireAuth('captain', 'owner'),
+  validate(verifyQrSchema),
   orderController.verifyQr
 );
 
@@ -51,6 +64,7 @@ router.post(
 router.get(
   '/shop',
   requireAuth('captain', 'owner', 'superadmin'),
+  validateQuery(orderQuerySchema),
   orderController.getShopOrders
 );
 
@@ -99,6 +113,7 @@ router.get(
 router.post(
   '/laundry',
   requireAuth('student'),
+  validate(createLaundryOrderSchema),
   orderController.createLaundryOrder
 );
 
@@ -110,6 +125,7 @@ router.post(
 router.post(
   '/xerox',
   requireAuth('student'),
+  validate(createXeroxOrderSchema),
   orderController.createXeroxOrder
 );
 
@@ -125,6 +141,7 @@ router.post(
 router.post(
   '/',
   requireAuth('student'),
+  validate(createOrderSchema),
   orderController.create
 );
 
@@ -140,6 +157,8 @@ router.post(
 router.post(
   '/:id/cancel',
   requireAuth('student'),
+  validateParams(orderIdParamSchema),
+  validate(cancelOrderSchema),
   orderController.cancel
 );
 
@@ -151,6 +170,8 @@ router.post(
 router.put(
   '/:id/status',
   requireAuth('captain', 'owner'),
+  validateParams(orderIdParamSchema),
+  validate(updateStatusSchema),
   orderController.updateStatus
 );
 
@@ -162,6 +183,7 @@ router.put(
 router.post(
   '/:id/complete',
   requireAuth('captain', 'owner'),
+  validateParams(orderIdParamSchema),
   orderController.complete
 );
 
@@ -173,6 +195,7 @@ router.post(
 router.get(
   '/:id',
   authenticate,
+  validateParams(orderIdParamSchema),
   orderController.getById
 );
 

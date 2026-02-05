@@ -7,6 +7,7 @@ import { Request, Response, NextFunction } from 'express';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { logger } from '../../config/logger.js';
 import { Readable } from 'stream';
+import { validateImageProxyParams } from './image-proxy.validation.js';
 
 // Garage S3 configuration
 const GARAGE_ENDPOINT = process.env['GARAGE_ENDPOINT'] || '';
@@ -54,10 +55,27 @@ export async function proxyImage(req: Request, res: Response, next: NextFunction
     const decodedFolder = decodeURIComponent(folder);
     const decodedFilename = decodeURIComponent(filename);
 
-    // Construct the S3 key
-    const key = `${decodedFolder}/${decodedFilename}`;
+    // Validate parameters to prevent path traversal attacks
+    const validation = validateImageProxyParams({
+      folder: decodedFolder,
+      filename: decodedFilename,
+    });
 
-    logger.info('Image proxy request', { folder: decodedFolder, filename: decodedFilename, key });
+    if (!validation.success) {
+      logger.warn('Image proxy validation failed', {
+        folder: decodedFolder,
+        filename: decodedFilename,
+        errors: validation.errors.map(e => e.message),
+        ip: req.ip,
+      });
+      res.status(400).json({ error: 'Invalid image path' });
+      return;
+    }
+
+    // Construct the S3 key using validated data
+    const key = `${validation.data.folder}/${validation.data.filename}`;
+
+    logger.info('Image proxy request', { folder: validation.data.folder, filename: validation.data.filename });
 
     const client = getS3Client();
 
@@ -113,7 +131,8 @@ export async function proxyImage(req: Request, res: Response, next: NextFunction
     });
 
     if (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404 || err.code === 'NoSuchKey') {
-      res.status(404).json({ error: 'Image not found', key: `${req.params.folder}/${req.params.filename}` });
+      // Don't expose internal key paths in response
+      res.status(404).json({ error: 'Image not found' });
       return;
     }
 
@@ -122,7 +141,8 @@ export async function proxyImage(req: Request, res: Response, next: NextFunction
       return;
     }
 
-    res.status(500).json({ error: 'Failed to fetch image', details: err.message });
+    // Don't expose internal error details to client
+    res.status(500).json({ error: 'Failed to fetch image' });
   }
 }
 

@@ -187,17 +187,19 @@ function handleMongooseCastError(err: MongooseCastError): AppError {
 
 /**
  * Handle MongoDB duplicate key errors
+ * Note: We don't expose the actual value to prevent information leakage
  */
 function handleDuplicateKeyError(err: MongooseDuplicateKeyError): AppError {
   const field = Object.keys(err.keyValue)[0];
-  const value = err.keyValue[field];
+  // Don't expose the actual value in the error message (security)
+  // Only expose the field name so the user knows what needs to be unique
 
   return new AppError(
-    `Duplicate value '${value}' for field '${field}'`,
+    `A record with this ${field} already exists`,
     HttpStatus.CONFLICT,
     'DUPLICATE_KEY',
     true,
-    { field, value }
+    { field } // Don't include actual value
   );
 }
 

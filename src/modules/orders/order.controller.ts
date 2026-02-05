@@ -192,20 +192,34 @@ export class OrderController {
   });
 
   /**
-   * Get all orders
+   * Get shop orders
    * GET /orders/shop
    * Role: captain, owner, superadmin
-   * Returns all orders from orders collection (no shop filtering)
+   * Returns orders filtered by shop (superadmin can view all or specific shop)
    */
   getShopOrders = asyncHandler(async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
+    const user = req.user as AuthUser;
+
     // Validate query params
     const queryValidation = validateOrderQuery(req.query);
     if (!queryValidation.success) {
       throw AppError.validation('Invalid query parameters', queryValidation.errors);
     }
 
-    // Fetch all orders - no shop filtering
-    const result = await orderService.getShopOrders(undefined, queryValidation.data);
+    // Determine shop ID based on role
+    let shopId: string | undefined;
+    if (user.role === 'superadmin') {
+      // Superadmin can access any shop's orders via query param, or all if not specified
+      shopId = req.query['shopId'] as string | undefined;
+    } else {
+      // Captain/Owner must be assigned to a shop and can only see their shop's orders
+      if (!user.shopId) {
+        throw AppError.forbidden('You are not assigned to a shop');
+      }
+      shopId = user.shopId;
+    }
+
+    const result = await orderService.getShopOrders(shopId, queryValidation.data);
 
     res.json({
       success: true,
@@ -219,12 +233,27 @@ export class OrderController {
    * Get active orders
    * GET /orders/shop/active
    * Role: captain, owner, superadmin
-   * Returns all active orders (pending, preparing, ready) from orders collection
+   * Returns active orders (pending, preparing, ready) filtered by shop
    */
   getActiveOrders = asyncHandler(async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
-    // Fetch all active orders - no shop filtering
-    logger.info('Fetching all active orders (no shop filter)');
-    const orders = await orderService.getActiveShopOrders(undefined);
+    const user = req.user as AuthUser;
+
+    // Determine shop ID based on role
+    let shopId: string | undefined;
+    if (user.role === 'superadmin') {
+      // Superadmin can access any shop's orders via query param, or all if not specified
+      shopId = req.query['shopId'] as string | undefined;
+      logger.info('Superadmin fetching active orders', { shopId: shopId || 'all' });
+    } else {
+      // Captain/Owner must be assigned to a shop and can only see their shop's orders
+      if (!user.shopId) {
+        throw AppError.forbidden('You are not assigned to a shop');
+      }
+      shopId = user.shopId;
+      logger.info('Fetching active orders for shop', { shopId, userId: user.id });
+    }
+
+    const orders = await orderService.getActiveShopOrders(shopId);
     logger.info(`Found ${orders.length} active orders`);
 
     res.json(successResponse(orders));

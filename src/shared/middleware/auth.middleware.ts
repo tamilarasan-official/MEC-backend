@@ -32,10 +32,10 @@ const JWT_AUDIENCE = process.env['JWT_AUDIENCE'] || 'mecfoodapp-users';
 
 /**
  * Extract JWT token from request
- * Supports: Authorization header (Bearer token), cookies, query param
+ * Supports: Authorization header (Bearer token), cookies, query param (WebSocket only in production)
  */
 function extractToken(req: Request): string | null {
-  // Try Authorization header first
+  // Try Authorization header first (preferred method)
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7);
@@ -46,9 +46,24 @@ function extractToken(req: Request): string | null {
     return req.cookies['accessToken'] as string;
   }
 
-  // Try query parameter (for WebSocket connections)
+  // Try query parameter - only allowed for WebSocket upgrades in production
+  // In development, allow for testing purposes
   if (req.query && req.query['token']) {
-    return req.query['token'] as string;
+    const isProduction = process.env['NODE_ENV'] === 'production';
+    const isWebSocketUpgrade = req.headers.upgrade === 'websocket';
+
+    if (!isProduction || isWebSocketUpgrade) {
+      // Log warning for query param tokens in production (even for WebSocket)
+      if (isProduction) {
+        // Only log at debug level to avoid noise
+        // logger.debug('Token extracted from query param for WebSocket', { path: req.path });
+      }
+      return req.query['token'] as string;
+    }
+
+    // In production, reject non-WebSocket query param tokens
+    // Don't return the token - force use of header or cookie
+    return null;
   }
 
   return null;

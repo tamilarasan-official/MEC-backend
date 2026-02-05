@@ -6,6 +6,8 @@
 import { Router } from 'express';
 import { ownerController } from './owner.controller.js';
 import { requireAuth } from '../../shared/middleware/auth.middleware.js';
+import { validate, validateParams } from '../../shared/middleware/validate.middleware.js';
+import { createCaptainSchema, captainIdParamSchema } from './owner.validation.js';
 
 export const ownerRoutes = Router();
 
@@ -13,13 +15,21 @@ export const ownerRoutes = Router();
 ownerRoutes.use(requireAuth('owner'));
 
 // POST /owner/captains - Create a new captain
-ownerRoutes.post('/captains', (req, res, next) => ownerController.createCaptain(req, res, next));
+ownerRoutes.post(
+  '/captains',
+  validate(createCaptainSchema),
+  (req, res, next) => ownerController.createCaptain(req, res, next)
+);
 
 // GET /owner/captains - List all captains for the owner's shop
 ownerRoutes.get('/captains', (req, res, next) => ownerController.getCaptains(req, res, next));
 
 // DELETE /owner/captains/:id - Remove a captain (deactivate)
-ownerRoutes.delete('/captains/:id', (req, res, next) => ownerController.removeCaptain(req, res, next));
+ownerRoutes.delete(
+  '/captains/:id',
+  validateParams(captainIdParamSchema),
+  (req, res, next) => ownerController.removeCaptain(req, res, next)
+);
 
 // GET /owner/shop - Get owner's shop details
 ownerRoutes.get('/shop', (req, res, next) => ownerController.getShopDetails(req, res, next));

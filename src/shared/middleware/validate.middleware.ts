@@ -68,8 +68,8 @@ function createErrorMessage(errors: ValidationError[]): string {
  * @param source - Source of data to validate (body, query, params, headers)
  * @param options - Validation options
  */
-export function validate<T>(
-  schema: ZodSchema<T>,
+export function validate(
+  schema: ZodSchema,
   source: ValidationSource = 'body',
   options: ValidationOptions = {}
 ) {
@@ -140,28 +140,28 @@ export function validate<T>(
 /**
  * Validate request body
  */
-export function validateBody<T>(schema: ZodSchema<T>, options?: ValidationOptions) {
+export function validateBody(schema: ZodSchema, options?: ValidationOptions) {
   return validate(schema, 'body', options);
 }
 
 /**
  * Validate query parameters
  */
-export function validateQuery<T>(schema: ZodSchema<T>, options?: ValidationOptions) {
+export function validateQuery(schema: ZodSchema, options?: ValidationOptions) {
   return validate(schema, 'query', options);
 }
 
 /**
  * Validate route parameters
  */
-export function validateParams<T>(schema: ZodSchema<T>, options?: ValidationOptions) {
+export function validateParams(schema: ZodSchema, options?: ValidationOptions) {
   return validate(schema, 'params', options);
 }
 
 /**
  * Validate request headers
  */
-export function validateHeaders<T>(schema: ZodSchema<T>, options?: ValidationOptions) {
+export function validateHeaders(schema: ZodSchema, options?: ValidationOptions) {
   return validate(schema, 'headers', options);
 }
 

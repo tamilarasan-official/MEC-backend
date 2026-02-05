@@ -6,6 +6,16 @@
 import { Router } from 'express';
 import { adhocPaymentsController } from './adhoc-payments.controller.js';
 import { authenticate, requireAuth } from '../../shared/middleware/auth.middleware.js';
+import { validate, validateParams, validateQuery } from '../../shared/middleware/validate.middleware.js';
+import {
+  createPaymentRequestSchema,
+  updatePaymentRequestSchema,
+  closePaymentRequestSchema,
+  paymentRequestFiltersSchema,
+  studentPaymentFiltersSchema,
+  historyFiltersSchema,
+  requestIdParamSchema,
+} from './adhoc-payments.validation.js';
 
 // ============================================
 // SUPERADMIN ROUTES
@@ -23,6 +33,7 @@ superadminRouter.use(requireAuth('superadmin', 'super_admin'));
  */
 superadminRouter.post(
   '/',
+  validate(createPaymentRequestSchema),
   adhocPaymentsController.createPaymentRequest.bind(adhocPaymentsController)
 );
 
@@ -33,6 +44,7 @@ superadminRouter.post(
  */
 superadminRouter.get(
   '/',
+  validateQuery(paymentRequestFiltersSchema),
   adhocPaymentsController.getPaymentRequests.bind(adhocPaymentsController)
 );
 
@@ -43,6 +55,7 @@ superadminRouter.get(
  */
 superadminRouter.get(
   '/:id',
+  validateParams(requestIdParamSchema),
   adhocPaymentsController.getPaymentRequestById.bind(adhocPaymentsController)
 );
 
@@ -53,6 +66,8 @@ superadminRouter.get(
  */
 superadminRouter.put(
   '/:id',
+  validateParams(requestIdParamSchema),
+  validate(updatePaymentRequestSchema),
   adhocPaymentsController.updatePaymentRequest.bind(adhocPaymentsController)
 );
 
@@ -63,6 +78,8 @@ superadminRouter.put(
  */
 superadminRouter.post(
   '/:id/close',
+  validateParams(requestIdParamSchema),
+  validate(closePaymentRequestSchema),
   adhocPaymentsController.closePaymentRequest.bind(adhocPaymentsController)
 );
 
@@ -73,6 +90,8 @@ superadminRouter.post(
  */
 superadminRouter.get(
   '/:id/students',
+  validateParams(requestIdParamSchema),
+  validateQuery(studentPaymentFiltersSchema),
   adhocPaymentsController.getStudentsForRequest.bind(adhocPaymentsController)
 );
 
@@ -83,6 +102,7 @@ superadminRouter.get(
  */
 superadminRouter.post(
   '/:id/remind',
+  validateParams(requestIdParamSchema),
   adhocPaymentsController.sendReminders.bind(adhocPaymentsController)
 );
 
@@ -112,6 +132,7 @@ studentRouter.get(
  */
 studentRouter.post(
   '/:id/pay',
+  validateParams(requestIdParamSchema),
   adhocPaymentsController.payRequest.bind(adhocPaymentsController)
 );
 
@@ -122,6 +143,7 @@ studentRouter.post(
  */
 studentRouter.get(
   '/history',
+  validateQuery(historyFiltersSchema),
   adhocPaymentsController.getPaymentHistory.bind(adhocPaymentsController)
 );
 

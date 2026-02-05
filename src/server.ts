@@ -77,14 +77,17 @@ const io = new SocketIOServer(server, {
 orderEvents.initialize(io);
 logger.info('Order events system initialized with Socket.IO');
 
-// Socket.IO authentication middleware
+// Socket.IO authentication middleware - REQUIRES valid JWT for all connections
 io.use((socket: AuthenticatedSocket, next) => {
   const token = socket.handshake.auth?.token || socket.handshake.query?.token;
 
-  // Allow connection without token for public events, but mark as unauthenticated
+  // Reject connections without token - authentication is required
   if (!token) {
-    logger.debug('Socket connection without token', { socketId: socket.id });
-    return next();
+    logger.warn('Socket connection rejected: no token provided', {
+      socketId: socket.id,
+      ip: socket.handshake.address,
+    });
+    return next(new Error('Authentication required'));
   }
 
   try {
@@ -109,7 +112,11 @@ io.use((socket: AuthenticatedSocket, next) => {
     logger.debug('Socket authenticated', { socketId: socket.id, userId: decoded.sub, role: decoded.role });
     next();
   } catch (err) {
-    logger.warn('Socket authentication failed', { socketId: socket.id, error: err instanceof Error ? err.message : 'Unknown error' });
+    logger.warn('Socket authentication failed', {
+      socketId: socket.id,
+      ip: socket.handshake.address,
+      error: err instanceof Error ? err.message : 'Unknown error',
+    });
     next(new Error('Authentication failed'));
   }
 });
