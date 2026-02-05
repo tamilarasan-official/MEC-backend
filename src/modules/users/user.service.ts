@@ -417,7 +417,8 @@ export class UserService {
     }
 
     // Get transaction summary
-    const summary = await Transaction.aggregate([
+    const TransactionModel = getCurrentTransactionModel();
+    const summary = await TransactionModel.aggregate([
       { $match: { user: new Types.ObjectId(userId), status: 'completed' } },
       {
         $group: {

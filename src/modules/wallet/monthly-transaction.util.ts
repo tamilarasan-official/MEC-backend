@@ -455,7 +455,11 @@ export async function calculateUserBalanceFromTransactions(userId: Types.ObjectI
  * Get list of all existing transaction collections
  */
 export async function getExistingTransactionCollections(): Promise<string[]> {
-  const collections = await mongoose.connection.db.listCollections().toArray();
+  const db = mongoose.connection.db;
+  if (!db) {
+    throw new Error('Database connection not established');
+  }
+  const collections = await db.listCollections().toArray();
   return collections
     .map((c) => c.name)
     .filter((name) => name.startsWith('transactions_'))
@@ -469,6 +473,9 @@ export async function getExistingTransactionCollections(): Promise<string[]> {
  */
 export async function migrateExistingTransactions(): Promise<{ migrated: number; errors: number }> {
   const db = mongoose.connection.db;
+  if (!db) {
+    throw new Error('Database connection not established');
+  }
   const oldCollectionExists = await db.listCollections({ name: 'transactions' }).hasNext();
 
   if (!oldCollectionExists) {
