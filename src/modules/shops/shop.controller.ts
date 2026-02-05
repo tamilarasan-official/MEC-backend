@@ -9,6 +9,43 @@ import {
 import { HttpStatus } from '../../config/constants.js';
 import { AppError } from '../../shared/middleware/error.middleware.js';
 import { logger } from '../../config/logger.js';
+import { IShopDocument } from './shop.model.js';
+
+// Transform MongoDB document to frontend-expected format
+interface ShopResponse {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  isActive: boolean;
+  ownerId?: string;
+  imageUrl?: string;
+  bannerUrl?: string;
+  rating?: number;
+  totalOrders?: number;
+  contactPhone?: string;
+}
+
+function transformShop(shop: IShopDocument): ShopResponse {
+  const owner = shop.owner as unknown as { _id: string } | string | undefined;
+  const ownerId = owner
+    ? (typeof owner === 'object' && owner !== null ? owner._id?.toString() : owner?.toString())
+    : undefined;
+
+  return {
+    id: shop._id.toString(),
+    name: shop.name,
+    description: shop.description || '',
+    category: shop.category,
+    isActive: shop.isActive,
+    ownerId: ownerId,
+    imageUrl: shop.imageUrl,
+    bannerUrl: shop.bannerUrl,
+    rating: shop.rating,
+    totalOrders: shop.totalOrders,
+    contactPhone: shop.contactPhone,
+  };
+}
 
 export class ShopController {
   /**
@@ -24,12 +61,13 @@ export class ShopController {
 
       const { activeOnly = true } = queryResult.data;
       const shops = await shopService.getAllShops(activeOnly);
+      const transformedShops = shops.map(transformShop);
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: { shops },
+        data: { shops: transformedShops },
         meta: {
-          count: shops.length,
+          count: transformedShops.length,
         },
         timestamp: new Date().toISOString(),
       });
@@ -57,7 +95,7 @@ export class ShopController {
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: shop,
+        data: transformShop(shop),
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
@@ -100,7 +138,7 @@ export class ShopController {
 
       res.status(HttpStatus.CREATED).json({
         success: true,
-        data: shop,
+        data: transformShop(shop),
         message: 'Shop created successfully',
         timestamp: new Date().toISOString(),
       });
@@ -154,7 +192,7 @@ export class ShopController {
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: shop,
+        data: transformShop(shop),
         message: 'Shop updated successfully',
         timestamp: new Date().toISOString(),
       });
@@ -191,7 +229,7 @@ export class ShopController {
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: updatedShop,
+        data: updatedShop ? transformShop(updatedShop) : null,
         message: 'Shop deactivated successfully',
         timestamp: new Date().toISOString(),
       });
@@ -226,7 +264,7 @@ export class ShopController {
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: shop,
+        data: transformShop(shop),
         message: `Shop ${shop.isActive ? 'activated' : 'deactivated'} successfully`,
         timestamp: new Date().toISOString(),
       });
