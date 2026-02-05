@@ -17,6 +17,7 @@ import { menuGlobalRoutes, menuPublicRoutes, menuOwnerRoutes, menuSuperadminRout
 import orderRoutes from './modules/orders/order.routes.js';
 import { superadminRoutes } from './modules/superadmin/index.js';
 import { uploadRoutes } from './modules/uploads/index.js';
+import { adhocPaymentsSuperadminRoutes, adhocPaymentsStudentRoutes } from './modules/adhoc-payments/index.js';
 
 // Import shared error class
 import { AppError } from './shared/middleware/error.middleware.js';
@@ -268,6 +269,10 @@ app.use(`${API_VERSION}/owner`, menuOwnerRoutes);
 app.use(`${API_VERSION}/superadmin/shops`, shopSuperadminRoutes);
 app.use(`${API_VERSION}/superadmin`, menuSuperadminRoutes);
 app.use(`${API_VERSION}/superadmin`, superadminRoutes);
+app.use(`${API_VERSION}/superadmin/payments`, adhocPaymentsSuperadminRoutes);
+
+// Student ad-hoc payments routes
+app.use(`${API_VERSION}/student/payments`, adhocPaymentsStudentRoutes);
 
 // Upload routes
 app.use(`${API_VERSION}/uploads`, uploadRoutes);

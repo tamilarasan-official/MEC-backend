@@ -5,7 +5,7 @@ export const TRANSACTION_TYPES = ['credit', 'debit', 'refund'] as const;
 export type WalletTransactionType = (typeof TRANSACTION_TYPES)[number];
 
 // Credit source types
-export const CREDIT_SOURCES = ['cash_deposit', 'online_payment', 'refund', 'adjustment'] as const;
+export const CREDIT_SOURCES = ['cash_deposit', 'online_payment', 'refund', 'adjustment', 'adhoc_payment'] as const;
 export type CreditSource = (typeof CREDIT_SOURCES)[number];
 
 // Transaction status
