@@ -13,15 +13,18 @@ import { HttpStatus } from '../../config/constants.js';
 // JWT CONFIGURATION
 // ============================================
 
-// Use JWT_ACCESS_SECRET for access tokens, fallback to JWT_SECRET
-const JWT_SECRET = process.env['JWT_ACCESS_SECRET'] || process.env['JWT_SECRET'];
+// Get and validate JWT secret
+function getJwtSecret(): string {
+  const secret = process.env['JWT_ACCESS_SECRET'] || process.env['JWT_SECRET'];
+  if (!secret) {
+    throw new Error('JWT_SECRET or JWT_ACCESS_SECRET environment variable is required');
+  }
+  return secret;
+}
+
+const JWT_SECRET: string = getJwtSecret();
 const JWT_ISSUER = process.env['JWT_ISSUER'] || 'mecfoodapp';
 const JWT_AUDIENCE = process.env['JWT_AUDIENCE'] || 'mecfoodapp-users';
-
-// Validate JWT secret is configured
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET or JWT_ACCESS_SECRET environment variable is required');
-}
 
 // ============================================
 // TOKEN EXTRACTION
