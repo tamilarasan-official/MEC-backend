@@ -35,3 +35,6 @@ JWT_AUDIENCE = "mecfoodapp-users"
 GARAGE_ENDPOINT = "https://request.storage.mec.welocalhost.com"
 GARAGE_BUCKET = "mecfoodmenu"
 GARAGE_REGION = "garage"
+
+# Image proxy base URL (used to convert Garage S3 URLs to proxy URLs)
+API_BASE_URL = "https://backend.mec.welocalhost.com"
