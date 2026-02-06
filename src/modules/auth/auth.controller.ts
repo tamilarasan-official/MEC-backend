@@ -21,7 +21,7 @@ function setRefreshTokenCookie(res: Response, token: string): void {
   res.cookie(REFRESH_TOKEN_COOKIE_NAME, token, {
     httpOnly: true,
     secure: isProduction, // Only send over HTTPS in production
-    sameSite: isProduction ? 'strict' : 'lax',
+    sameSite: isProduction ? 'none' : 'lax', // 'none' required for cross-origin cookies
     maxAge: REFRESH_TOKEN_MAX_AGE,
     path: '/api/v1/auth', // Only send to auth endpoints
   });
@@ -34,7 +34,7 @@ function clearRefreshTokenCookie(res: Response): void {
   res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, {
     httpOnly: true,
     secure: isProduction,
-    sameSite: isProduction ? 'strict' : 'lax',
+    sameSite: isProduction ? 'none' : 'lax',
     path: '/api/v1/auth',
   });
 }

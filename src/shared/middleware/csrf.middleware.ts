@@ -36,7 +36,7 @@ export function csrfTokenGenerator(req: Request, res: Response, next: NextFuncti
     res.cookie(CSRF_COOKIE_NAME, token, {
       httpOnly: false,
       secure: process.env['NODE_ENV'] === 'production',
-      sameSite: 'strict',
+      sameSite: process.env['NODE_ENV'] === 'production' ? 'none' : 'strict',
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       path: '/',
     });
