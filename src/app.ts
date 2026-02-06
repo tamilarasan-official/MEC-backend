@@ -95,6 +95,9 @@ function setCorsHeaders(res: Response, origin: string): void {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control, X-CSRF-Token');
+  // Expose X-CSRF-Token so frontend can read it from cross-origin responses
+  // (fallback when browser blocks the csrf_token cookie)
+  res.setHeader('Access-Control-Expose-Headers', 'X-CSRF-Token');
   res.setHeader('Access-Control-Max-Age', '86400');
 }
 
@@ -134,6 +137,7 @@ const corsOptions: cors.CorsOptions = {
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'Cache-Control', 'X-CSRF-Token'],
+  exposedHeaders: ['X-CSRF-Token'],
 };
 
 app.use(cors(corsOptions));

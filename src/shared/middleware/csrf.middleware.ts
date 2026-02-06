@@ -1,6 +1,7 @@
 /**
  * CSRF Protection Middleware
  * Generates and validates CSRF tokens for state-changing requests
+ * Uses double-submit cookie pattern with response header fallback
  */
 
 import { Request, Response, NextFunction } from 'express';
@@ -23,30 +24,37 @@ function generateCsrfToken(): string {
 }
 
 /**
- * Middleware to generate and set CSRF token in cookie
+ * Middleware to generate and set CSRF token in cookie + response header
  * Should be applied early in the middleware chain
  */
 export function csrfTokenGenerator(req: Request, res: Response, next: NextFunction): void {
-  // Only set CSRF cookie if not already present or expired
+  const isProduction = process.env['NODE_ENV'] === 'production';
+
   if (!req.cookies[CSRF_COOKIE_NAME]) {
     const token = generateCsrfToken();
 
     // Set as httpOnly: false so client-side JavaScript can read it
     // This is intentional - the security comes from the double-submit pattern
-    const isProduction = process.env['NODE_ENV'] === 'production';
     res.cookie(CSRF_COOKIE_NAME, token, {
       httpOnly: false,
       secure: isProduction,
-      sameSite: isProduction ? 'none' : 'strict',
+      // Use 'lax' for same-site (frontend and backend share .welocalhost.com)
+      // 'none' triggers unnecessary cross-site cookie restrictions in Safari/Firefox
+      sameSite: isProduction ? 'lax' : 'strict',
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       path: '/',
       domain: isProduction ? '.welocalhost.com' : undefined,
     });
 
-    // Also attach to request for potential use in response
     req.csrfToken = token;
   } else {
     req.csrfToken = req.cookies[CSRF_COOKIE_NAME];
+  }
+
+  // Always set the token as a response header so the frontend can read it
+  // even if the browser blocks the cookie (Safari ITP, Firefox ETP, Brave)
+  if (req.csrfToken) {
+    res.setHeader('X-CSRF-Token', req.csrfToken);
   }
 
   next();
@@ -96,8 +104,11 @@ export function csrfValidator(req: Request, res: Response, next: NextFunction): 
     return;
   }
 
-  // Tokens must match (constant-time comparison to prevent timing attacks)
-  if (!crypto.timingSafeEqual(Buffer.from(cookieToken), Buffer.from(headerToken))) {
+  // Ensure tokens have the same byte length before constant-time comparison
+  // (timingSafeEqual throws TypeError on length mismatch)
+  const cookieBuf = Buffer.from(cookieToken);
+  const headerBuf = Buffer.from(headerToken);
+  if (cookieBuf.length !== headerBuf.length || !crypto.timingSafeEqual(cookieBuf, headerBuf)) {
     logger.warn('CSRF validation failed: token mismatch', {
       path: req.path,
       method: req.method,
