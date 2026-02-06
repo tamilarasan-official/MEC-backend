@@ -4,11 +4,11 @@ import {
   createPaymentRequestSchema,
   updatePaymentRequestSchema,
   closePaymentRequestSchema,
-  paymentRequestFiltersSchema,
   studentPaymentFiltersSchema,
   historyFiltersSchema,
   requestIdParamSchema,
 } from './adhoc-payments.validation.js';
+import type { PaymentRequestFilters } from './adhoc-payments.validation.js';
 import { HttpStatus } from '../../config/constants.js';
 import { logger } from '../../config/logger.js';
 
@@ -89,22 +89,10 @@ export class AdhocPaymentsController {
    */
   async getPaymentRequests(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      // Validate query parameters
-      const validationResult = paymentRequestFiltersSchema.safeParse(req.query);
+      // Query is already validated and transformed by validateQuery middleware
+      const filters = req.query as unknown as PaymentRequestFilters;
 
-      if (!validationResult.success) {
-        res.status(HttpStatus.BAD_REQUEST).json({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid query parameters',
-            details: validationResult.error.errors,
-          },
-        });
-        return;
-      }
-
-      const result = await adhocPaymentsService.getPaymentRequests(validationResult.data);
+      const result = await adhocPaymentsService.getPaymentRequests(filters);
 
       res.status(HttpStatus.OK).json({
         success: true,

@@ -116,7 +116,7 @@ export type ClosePaymentRequestInput = z.infer<typeof closePaymentRequestSchema>
 // ============================================
 
 export const paymentRequestFiltersSchema = z.object({
-  status: z.enum(PAYMENT_REQUEST_STATUSES).optional(),
+  status: z.union([z.enum(PAYMENT_REQUEST_STATUSES), z.literal('')]).optional().transform(val => val || undefined),
   page: z
     .string()
     .optional()
