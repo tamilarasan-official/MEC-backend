@@ -71,7 +71,7 @@ const router = Router();
  */
 router.post(
   '/register',
-  registerRateLimiter,
+  // registerRateLimiter, // Rate limiting disabled for now
   validate(registerSchema),
   authController.register
 );
@@ -83,7 +83,7 @@ router.post(
  */
 router.post(
   '/login',
-  authRateLimiter,
+  // authRateLimiter, // Rate limiting disabled for now
   validate(loginSchema),
   authController.login
 );

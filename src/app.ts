@@ -180,8 +180,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Cookie parser middleware (for httpOnly refresh token cookies)
 app.use(cookieParser());
 
-// IP blocking middleware - check if IP is blocked before processing requests
-app.use(checkIpBlock);
+// IP blocking middleware - disabled for now along with rate limiting
+// app.use(checkIpBlock);
 
 // CSRF protection for API routes
 // Generates token on all requests, validates on state-changing requests (POST, PUT, PATCH, DELETE)
@@ -249,8 +249,9 @@ const unauthenticatedLimiter = rateLimit({
   },
 });
 
-app.use(authenticatedLimiter);
-app.use(unauthenticatedLimiter);
+// Rate limiting disabled for now
+// app.use(authenticatedLimiter);
+// app.use(unauthenticatedLimiter);
 
 // Request logging middleware
 app.use((req: Request, _res: Response, next: NextFunction) => {

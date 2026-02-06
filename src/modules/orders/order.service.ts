@@ -863,53 +863,130 @@ export class OrderService {
    * Get order statistics for a shop
    * If shopId is undefined, returns stats for all shops (for superadmin)
    */
-  async getShopOrderStats(shopId: string | undefined, startDate?: Date, endDate?: Date): Promise<Record<string, unknown>> {
-    const matchStage: Record<string, unknown> = {};
+  async getShopOrderStats(shopId: string | undefined, _startDate?: Date, _endDate?: Date): Promise<Record<string, unknown>> {
+    const shopFilter: Record<string, unknown> = {};
     if (shopId) {
-      matchStage['shop'] = new Types.ObjectId(shopId);
+      shopFilter['shop'] = new Types.ObjectId(shopId);
     }
 
-    if (startDate || endDate) {
-      matchStage['placedAt'] = {};
-      if (startDate) {
-        (matchStage['placedAt'] as Record<string, Date>)['$gte'] = startDate;
-      }
-      if (endDate) {
-        (matchStage['placedAt'] as Record<string, Date>)['$lte'] = endDate;
-      }
-    }
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const stats = await Order.aggregate([
-      { $match: matchStage },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-          totalRevenue: { $sum: '$total' },
+    // Run all queries in parallel
+    const [allTimeStats, todayStats, monthStats, totalMenuItems, monthOrders] = await Promise.all([
+      // 1. All-time stats grouped by status (for current counts + totals)
+      Order.aggregate([
+        { $match: { ...shopFilter } },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+            revenue: { $sum: '$total' },
+          },
         },
-      },
+      ]),
+
+      // 2. Today's orders grouped by status
+      Order.aggregate([
+        { $match: { ...shopFilter, placedAt: { $gte: startOfToday } } },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+            revenue: { $sum: '$total' },
+          },
+        },
+      ]),
+
+      // 3. This month's completed orders (revenue + profit estimation)
+      Order.aggregate([
+        { $match: { ...shopFilter, placedAt: { $gte: startOfMonth }, status: 'completed' } },
+        {
+          $project: {
+            total: 1,
+            itemCost: {
+              $sum: {
+                $map: {
+                  input: { $ifNull: ['$items', []] },
+                  as: 'item',
+                  in: { $multiply: ['$$item.price', '$$item.quantity', 0.6] },
+                },
+              },
+            },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            monthRevenue: { $sum: '$total' },
+            estimatedCost: { $sum: '$itemCost' },
+          },
+        },
+      ]),
+
+      // 4. Menu items count
+      shopId ? FoodItem.countDocuments({ shop: new Types.ObjectId(shopId), isAvailable: true }) : FoodItem.countDocuments({ isAvailable: true }),
+
+      // 5. This month's total order count (all statuses)
+      Order.countDocuments({ ...shopFilter, placedAt: { $gte: startOfMonth } }),
     ]);
 
-    // Format results
-    const result: Record<string, { count: number; revenue: number }> = {};
+    // Process all-time stats
     let totalOrders = 0;
     let totalRevenue = 0;
+    let pendingOrders = 0;
+    let preparingOrders = 0;
+    let readyOrders = 0;
 
-    for (const stat of stats) {
-      result[stat._id] = {
-        count: stat.count,
-        revenue: stat.totalRevenue,
-      };
+    for (const stat of allTimeStats) {
       totalOrders += stat.count;
       if (stat._id === 'completed') {
-        totalRevenue += stat.totalRevenue;
+        totalRevenue += stat.revenue;
+      }
+      if (stat._id === 'pending') pendingOrders = stat.count;
+      if (stat._id === 'preparing') preparingOrders = stat.count;
+      if (stat._id === 'ready') readyOrders = stat.count;
+    }
+
+    // Process today's stats
+    let todayOrders = 0;
+    let todayRevenue = 0;
+    let completedToday = 0;
+
+    for (const stat of todayStats) {
+      todayOrders += stat.count;
+      if (stat._id === 'completed') {
+        todayRevenue += stat.revenue;
+        completedToday = stat.count;
       }
     }
 
+    // Process month stats
+    const monthData = monthStats[0];
+    const monthRevenue = monthData?.monthRevenue ?? 0;
+    const monthProfit = monthRevenue - (monthData?.estimatedCost ?? 0);
+
     return {
-      byStatus: result,
+      // Owner dashboard fields (ShopStats)
+      todayOrders,
+      todayRevenue,
+      monthOrders,
+      monthRevenue,
+      monthProfit: Math.max(0, monthProfit),
+      pendingOrders,
+      preparingOrders,
+      readyOrders,
+      totalMenuItems,
+
+      // Captain dashboard fields (OrderStats)
       totalOrders,
       totalRevenue,
+      completedToday,
+      inProgress: pendingOrders + preparingOrders,
+      pendingCount: pendingOrders,
+      preparingCount: preparingOrders,
+      readyCount: readyOrders,
     };
   }
 

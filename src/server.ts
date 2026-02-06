@@ -126,6 +126,19 @@ io.on(SocketEvents.CONNECT, (socket: AuthenticatedSocket) => {
   const user = socket.data.user;
   logger.info('Client connected', { socketId: socket.id, userId: user?.id, role: user?.role });
 
+  // Auto-join rooms based on authenticated user's role
+  if (user) {
+    // Everyone joins their own user room
+    socket.join(`user:${user.id}`);
+    logger.debug(`Auto-joined user room: user:${user.id}`, { socketId: socket.id });
+
+    // Shop staff auto-join their shop room
+    if (user.shopId && ['captain', 'owner', 'superadmin'].includes(user.role)) {
+      socket.join(`shop:${user.shopId}`);
+      logger.debug(`Auto-joined shop room: shop:${user.shopId}`, { socketId: socket.id, role: user.role });
+    }
+  }
+
   // Join room for order updates (with authorization)
   socket.on('join:order', async (orderId: string) => {
     if (!user) {
