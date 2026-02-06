@@ -51,20 +51,17 @@ export async function proxyImage(req: Request, res: Response, next: NextFunction
       return;
     }
 
-    // Decode URL-encoded characters (e.g., %20 -> space)
-    const decodedFolder = decodeURIComponent(folder);
-    const decodedFilename = decodeURIComponent(filename);
-
-    // Validate parameters to prevent path traversal attacks
+    // Express already URL-decodes req.params, so no need for decodeURIComponent.
+    // Double-decoding would corrupt filenames containing literal '%' characters.
     const validation = validateImageProxyParams({
-      folder: decodedFolder,
-      filename: decodedFilename,
+      folder,
+      filename,
     });
 
     if (!validation.success) {
       logger.warn('Image proxy validation failed', {
-        folder: decodedFolder,
-        filename: decodedFilename,
+        folder,
+        filename,
         errors: validation.errors.map(e => e.message),
         ip: req.ip,
       });

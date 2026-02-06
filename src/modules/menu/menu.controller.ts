@@ -14,6 +14,7 @@ import { HttpStatus } from '../../config/constants.js';
 import { AppError } from '../../shared/middleware/error.middleware.js';
 import { logger } from '../../config/logger.js';
 import { IFoodItemDocument } from './food-item.model.js';
+import { convertToProxyUrl } from '../../shared/utils/image-url.util.js';
 
 // Transform MongoDB document to frontend-expected format
 interface FoodItemResponse {
@@ -32,33 +33,6 @@ interface FoodItemResponse {
   offerPrice?: number;
   rating: number;
   preparationTime: string;
-}
-
-// Garage S3 config for URL transformation
-const GARAGE_ENDPOINT = process.env['GARAGE_ENDPOINT'] || 'https://request.storage.mec.welocalhost.com';
-const GARAGE_BUCKET = process.env['GARAGE_BUCKET'] || 'mecfoodmenu';
-// API base URL for constructing absolute proxy URLs
-const API_BASE_URL = process.env['API_BASE_URL'] || 'https://api.mecfoodapp.welocalhost.com';
-
-/**
- * Convert Garage S3 URL to proxy URL
- * From: https://request.storage.mec.welocalhost.com/mecfoodmenu/meccanteen/idly.png
- * To: https://api.mecfoodapp.welocalhost.com/api/v1/images/meccanteen/idly.png
- */
-function convertToProxyUrl(garageUrl: string | undefined): string {
-  if (!garageUrl) return '/placeholder.svg';
-
-  // Check if it's a Garage URL
-  const garagePrefix = `${GARAGE_ENDPOINT}/${GARAGE_BUCKET}/`;
-  if (garageUrl.startsWith(garagePrefix)) {
-    // Extract the path after bucket (e.g., "meccanteen/idly.png")
-    const path = garageUrl.substring(garagePrefix.length);
-    // Return absolute URL to the image proxy endpoint
-    return `${API_BASE_URL}/api/v1/images/${path}`;
-  }
-
-  // If it's already a proxy URL or other URL, return as-is
-  return garageUrl;
 }
 
 function transformFoodItem(item: IFoodItemDocument): FoodItemResponse {

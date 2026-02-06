@@ -20,6 +20,7 @@ import { HttpStatus } from '../../config/constants.js';
 import { orderEvents } from './order.events.js';
 import { logger } from '../../config/logger.js';
 import { AuthUser } from '../../shared/types/index.js';
+import { convertToProxyUrl } from '../../shared/utils/image-url.util.js';
 
 // ============================================
 // RESPONSE HELPERS
@@ -44,6 +45,34 @@ function successResponse<T>(data: T, message?: string): SuccessResponse<T> {
   }
 
   return response;
+}
+
+/**
+ * Transform image URLs in order data from raw Garage S3 URLs to proxy URLs.
+ * Works on a single order or an array of orders (plain objects or Mongoose docs).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function transformOrderImages<T>(data: T): T {
+  if (!data) return data;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function processOrder(order: any): any {
+    if (!order) return order;
+    // Convert Mongoose document to plain object if needed
+    const obj = typeof order.toObject === 'function' ? order.toObject() : order;
+    if (obj.items && Array.isArray(obj.items)) {
+      obj.items = obj.items.map((item: Record<string, unknown>) => ({
+        ...item,
+        imageUrl: item.imageUrl ? convertToProxyUrl(item.imageUrl as string) : item.imageUrl,
+      }));
+    }
+    return obj;
+  }
+
+  if (Array.isArray(data)) {
+    return data.map(processOrder) as unknown as T;
+  }
+  return processOrder(data) as T;
 }
 
 // ============================================
@@ -74,7 +103,7 @@ export class OrderController {
     res.status(HttpStatus.CREATED).json(
       successResponse(
         {
-          order: result.order,
+          order: transformOrderImages(result.order),
           qrData: result.qrData,
         },
         'Order created successfully'
@@ -105,7 +134,7 @@ export class OrderController {
     res.status(HttpStatus.CREATED).json(
       successResponse(
         {
-          order: result.order,
+          order: transformOrderImages(result.order),
           qrData: result.qrData,
         },
         'Laundry order created successfully'
@@ -136,7 +165,7 @@ export class OrderController {
     res.status(HttpStatus.CREATED).json(
       successResponse(
         {
-          order: result.order,
+          order: transformOrderImages(result.order),
           qrData: result.qrData,
         },
         'Xerox order created successfully'
@@ -164,7 +193,7 @@ export class OrderController {
       checkOwnership ? user.id : undefined
     );
 
-    res.json(successResponse(order));
+    res.json(successResponse(transformOrderImages(order)));
   });
 
   /**
@@ -182,7 +211,7 @@ export class OrderController {
 
     res.json({
       success: true,
-      data: result.orders,
+      data: transformOrderImages(result.orders),
       pagination: result.pagination,
       timestamp: new Date().toISOString(),
     });
@@ -217,7 +246,7 @@ export class OrderController {
 
     res.json({
       success: true,
-      data: result.orders,
+      data: transformOrderImages(result.orders),
       pagination: result.pagination,
       timestamp: new Date().toISOString(),
     });
@@ -250,7 +279,7 @@ export class OrderController {
     const orders = await orderService.getActiveShopOrders(shopId);
     logger.info(`Found ${orders.length} active orders`);
 
-    res.json(successResponse(orders));
+    res.json(successResponse(transformOrderImages(orders)));
   });
 
   /**
@@ -289,7 +318,7 @@ export class OrderController {
       orderEvents.emitOrderReady(order.user._id.toString(), order);
     }
 
-    res.json(successResponse(order, `Order status updated to ${bodyValidation.data.status}`));
+    res.json(successResponse(transformOrderImages(order), `Order status updated to ${bodyValidation.data.status}`));
   });
 
   /**
@@ -322,7 +351,7 @@ export class OrderController {
     // Emit status change event
     orderEvents.emitStatusChange(order.user._id.toString(), order);
 
-    res.json(successResponse(order, 'Order cancelled successfully. Amount refunded to wallet.'));
+    res.json(successResponse(transformOrderImages(order), 'Order cancelled successfully. Amount refunded to wallet.'));
   });
 
   /**
@@ -346,7 +375,7 @@ export class OrderController {
     // Verify QR
     const order = await orderService.verifyQr(validation.data.qrData, user.shopId);
 
-    res.json(successResponse(order, 'QR code verified. Order is ready for pickup.'));
+    res.json(successResponse(transformOrderImages(order), 'QR code verified. Order is ready for pickup.'));
   });
 
   /**
@@ -369,7 +398,7 @@ export class OrderController {
     // Emit status change event
     orderEvents.emitStatusChange(order.user._id.toString(), order);
 
-    res.json(successResponse(order, 'Order completed successfully'));
+    res.json(successResponse(transformOrderImages(order), 'Order completed successfully'));
   });
 
   /**

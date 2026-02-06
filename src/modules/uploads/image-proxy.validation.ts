@@ -6,7 +6,15 @@
 import { z } from 'zod';
 
 // Whitelist of allowed folders in S3 bucket
+// Must match StorageFolders in storage.util.ts + any legacy folders with existing data
 const ALLOWED_FOLDERS = [
+  // Current StorageFolders (storage.util.ts)
+  'menu',
+  'categories',
+  'shops',
+  'users',
+  'offers',
+  // Legacy folder names (may have existing data in S3)
   'meccanteen',
   'menuimages',
   'shop-images',
@@ -73,8 +81,9 @@ export const imageProxyParamsSchema = z.object({
     )
     .refine(
       (val) => {
-        // Validate filename format (alphanumeric, dashes, underscores, dots)
-        return /^[\w\-.]+$/i.test(val);
+        // Validate filename format: alphanumeric, spaces, dashes, underscores, dots, parentheses
+        // Spaces are common in filenames stored in S3 (URL-decoded by Express before validation)
+        return /^[\w\-. ()]+$/i.test(val);
       },
       { message: 'Filename contains invalid characters' }
     ),

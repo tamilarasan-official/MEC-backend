@@ -42,7 +42,7 @@ Authorization: Bearer <your-access-token>
     },
     servers: [
       {
-        url: 'https://api.mecfoodapp.welocalhost.com/api/v1',
+        url: 'https://backend.mec.welocalhost.com/api/v1',
         description: 'Production Server',
       },
       {

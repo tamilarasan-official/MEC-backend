@@ -10,6 +10,7 @@ import { HttpStatus } from '../../config/constants.js';
 import { AppError } from '../../shared/middleware/error.middleware.js';
 import { logger } from '../../config/logger.js';
 import { IShopDocument } from './shop.model.js';
+import { convertToProxyUrl } from '../../shared/utils/image-url.util.js';
 
 // Transform MongoDB document to frontend-expected format
 interface ShopResponse {
@@ -39,8 +40,8 @@ function transformShop(shop: IShopDocument): ShopResponse {
     category: shop.category,
     isActive: shop.isActive,
     ownerId: ownerId,
-    imageUrl: shop.imageUrl,
-    bannerUrl: shop.bannerUrl,
+    imageUrl: convertToProxyUrl(shop.imageUrl),
+    bannerUrl: convertToProxyUrl(shop.bannerUrl),
     rating: shop.rating,
     totalOrders: shop.totalOrders,
     contactPhone: shop.contactPhone,
