@@ -4,11 +4,9 @@ import {
   createPaymentRequestSchema,
   updatePaymentRequestSchema,
   closePaymentRequestSchema,
-  studentPaymentFiltersSchema,
-  historyFiltersSchema,
   requestIdParamSchema,
 } from './adhoc-payments.validation.js';
-import type { PaymentRequestFilters } from './adhoc-payments.validation.js';
+import type { PaymentRequestFilters, StudentPaymentFilters, HistoryFilters } from './adhoc-payments.validation.js';
 import { HttpStatus } from '../../config/constants.js';
 import { logger } from '../../config/logger.js';
 
@@ -289,24 +287,12 @@ export class AdhocPaymentsController {
         return;
       }
 
-      // Validate query parameters
-      const queryValidation = studentPaymentFiltersSchema.safeParse(req.query);
-
-      if (!queryValidation.success) {
-        res.status(HttpStatus.BAD_REQUEST).json({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid query parameters',
-            details: queryValidation.error.errors,
-          },
-        });
-        return;
-      }
+      // Query is already validated and transformed by validateQuery middleware
+      const filters = req.query as unknown as StudentPaymentFilters;
 
       const result = await adhocPaymentsService.getStudentsForRequest(
         paramValidation.data.id,
-        queryValidation.data
+        filters
       );
 
       res.status(HttpStatus.OK).json({
@@ -511,22 +497,10 @@ export class AdhocPaymentsController {
         return;
       }
 
-      // Validate query parameters
-      const queryValidation = historyFiltersSchema.safeParse(req.query);
+      // Query is already validated and transformed by validateQuery middleware
+      const filters = req.query as unknown as HistoryFilters;
 
-      if (!queryValidation.success) {
-        res.status(HttpStatus.BAD_REQUEST).json({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid query parameters',
-            details: queryValidation.error.errors,
-          },
-        });
-        return;
-      }
-
-      const result = await adhocPaymentsService.getStudentPaymentHistory(studentId, queryValidation.data);
+      const result = await adhocPaymentsService.getStudentPaymentHistory(studentId, filters);
 
       res.status(HttpStatus.OK).json({
         success: true,
