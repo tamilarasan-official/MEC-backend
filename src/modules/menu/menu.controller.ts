@@ -146,20 +146,24 @@ export class MenuController {
 
   /**
    * GET /shops/:shopId/menu - Get menu items (public)
+   * Note: Params and query are already validated by middleware
    */
   async getMenuItems(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const paramResult = shopIdParamSchema.safeParse(req.params);
-      if (!paramResult.success) {
-        throw new AppError('Invalid shop ID format', HttpStatus.BAD_REQUEST);
+      // Params are validated by middleware, but we need shopId
+      const shopId = req.params.shopId;
+      if (!shopId) {
+        throw new AppError('Shop ID is required', HttpStatus.BAD_REQUEST);
       }
 
-      const queryResult = menuQuerySchema.safeParse(req.query);
-      if (!queryResult.success) {
-        throw new AppError('Invalid query parameters', HttpStatus.BAD_REQUEST);
-      }
+      logger.info('getMenuItems called', { shopId, query: req.query });
 
-      const items = await menuService.getMenuItems(paramResult.data.shopId, queryResult.data);
+      // Query is already validated and transformed by middleware
+      const query = req.query as Record<string, unknown>;
+
+      const items = await menuService.getMenuItems(shopId, query);
+      logger.info('getMenuItems result', { shopId, itemCount: items.length });
+
       const transformedItems = items.map(transformFoodItem);
 
       res.status(HttpStatus.OK).json({

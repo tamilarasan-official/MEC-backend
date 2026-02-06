@@ -153,4 +153,15 @@ router.put(
   userController.reactivateUser.bind(userController)
 );
 
+/**
+ * @route PUT /api/v1/superadmin/users/:id/reset-password
+ * @desc Reset a user's password
+ * @access Private (Superadmin only)
+ */
+router.put(
+  '/superadmin/users/:id/reset-password',
+  requireAuth('superadmin', 'super_admin'),
+  userController.resetPassword.bind(userController)
+);
+
 export default router;

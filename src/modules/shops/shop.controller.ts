@@ -56,7 +56,7 @@ export class ShopController {
       const queryResult = shopQuerySchema.safeParse(req.query);
 
       if (!queryResult.success) {
-        throw new AppError('Invalid query parameters', HttpStatus.BAD_REQUEST);
+        throw new AppError('Invalid query parameters', HttpStatus.BAD_REQUEST, 'VALIDATION_ERROR', true, queryResult.error.errors);
       }
 
       const { activeOnly = true } = queryResult.data;

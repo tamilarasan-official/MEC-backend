@@ -123,9 +123,9 @@ export const shopIdParamSchema = z.object({
 
 // Query parameters schema
 export const shopQuerySchema = z.object({
-  activeOnly: z.enum(['true', 'false']).optional().transform(val => val === 'true'),
+  activeOnly: z.string().optional().transform(val => val === 'true'),
   category: z.enum(SHOP_CATEGORIES).optional(),
-});
+}).passthrough(); // Allow extra query params to pass through
 
 // Types derived from schemas
 export type CreateShopInput = z.infer<typeof createShopSchema>;

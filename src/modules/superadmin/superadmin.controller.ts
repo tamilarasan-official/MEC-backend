@@ -128,6 +128,46 @@ export class SuperadminController {
       )
     );
   });
+
+  /**
+   * Diagnose owner-shop relationships
+   * GET /superadmin/diagnose/owner-shop
+   * Role: superadmin
+   */
+  diagnoseOwnerShopLinks = asyncHandler(async (_req: Request, res: Response, _next: NextFunction): Promise<void> => {
+    const result = await superadminService.diagnoseOwnerShopLinks();
+
+    res.status(HttpStatus.OK).json(
+      successResponse(result, `Found ${result.issues.length} issue(s) with owner-shop relationships`)
+    );
+  });
+
+  /**
+   * Link an owner to a shop
+   * POST /superadmin/fix/owner-shop
+   * Body: { ownerId: string, shopId: string }
+   * Role: superadmin
+   */
+  linkOwnerToShop = asyncHandler(async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
+    const { ownerId, shopId } = req.body;
+
+    if (!ownerId || !shopId) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Both ownerId and shopId are required',
+        },
+      });
+      return;
+    }
+
+    const result = await superadminService.linkOwnerToShop(ownerId, shopId);
+
+    res.status(HttpStatus.OK).json(
+      successResponse(result, `Successfully linked owner "${result.owner.name}" to shop "${result.shop.name}"`)
+    );
+  });
 }
 
 // Export singleton instance

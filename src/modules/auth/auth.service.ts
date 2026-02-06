@@ -61,6 +61,7 @@ export interface UserPublicData {
   year?: Year;
   balance: number;
   shopId?: string;
+  shopName?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -121,6 +122,22 @@ function normalizeRole(role: string): UserRole {
  * Note: Roles are normalized (admin->accountant, super_admin->superadmin, canteen->captain)
  */
 function toPublicUser(user: IUserDocument): UserPublicData {
+  // Handle populated shop field
+  const shop = user.shop as unknown as { _id: Types.ObjectId; name: string } | Types.ObjectId | undefined;
+  let shopId: string | undefined;
+  let shopName: string | undefined;
+
+  if (shop) {
+    if (typeof shop === 'object' && 'name' in shop) {
+      // Shop is populated
+      shopId = shop._id.toString();
+      shopName = shop.name;
+    } else {
+      // Shop is just an ObjectId
+      shopId = shop.toString();
+    }
+  }
+
   return {
     id: user._id.toString(),
     username: user.username,
@@ -135,7 +152,8 @@ function toPublicUser(user: IUserDocument): UserPublicData {
     department: user.department,
     year: user.year,
     balance: user.balance,
-    shopId: user.shop?.toString(),
+    shopId,
+    shopName,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -203,13 +221,20 @@ export class AuthService {
   }
 
   /**
-   * Login user with username and password
+   * Login user with username/email and password
    * Returns tokens and user data on success
    * Implements account lockout after multiple failed attempts
    */
-  async login(username: string, password: string): Promise<LoginResult> {
+  async login(usernameOrEmail: string, password: string): Promise<LoginResult> {
     // Find user with password hash (excluded by default)
-    const user = await User.findOne({ username: username.toLowerCase() }).select('+passwordHash');
+    // Support login with either username or email
+    const identifier = usernameOrEmail.toLowerCase();
+    const user = await User.findOne({
+      $or: [
+        { username: identifier },
+        { email: identifier }
+      ]
+    }).select('+passwordHash').populate('shop', 'name');
 
     if (!user) {
       throw new AuthError('Invalid credentials', 'INVALID_CREDENTIALS', 401);
@@ -243,7 +268,7 @@ export class AuthService {
       if (user.failedLoginAttempts >= LOCKOUT_THRESHOLD) {
         user.accountLockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
         await user.save();
-        logger.warn(`Account locked due to failed attempts: ${username}`);
+        logger.warn(`Account locked due to failed attempts: ${user.username}`);
         throw new AuthError(
           `Account locked due to too many failed attempts. Please try again in ${LOCKOUT_DURATION_MS / 60000} minutes.`,
           'ACCOUNT_LOCKED',
@@ -253,7 +278,7 @@ export class AuthService {
 
       await user.save();
       const attemptsRemaining = LOCKOUT_THRESHOLD - user.failedLoginAttempts;
-      logger.warn(`Failed login attempt for: ${username} (${attemptsRemaining} attempts remaining)`);
+      logger.warn(`Failed login attempt for: ${user.username} (${attemptsRemaining} attempts remaining)`);
       throw new AuthError('Invalid credentials', 'INVALID_CREDENTIALS', 401);
     }
 
@@ -281,7 +306,7 @@ export class AuthService {
     const accessToken = this.generateAccessToken(user);
     const refreshToken = this.generateRefreshToken(user);
 
-    logger.info(`User logged in: ${username}`);
+    logger.info(`User logged in: ${user.username}`);
 
     return {
       user: toPublicUser(user),
@@ -298,8 +323,8 @@ export class AuthService {
     // Verify refresh token
     const payload = this.verifyRefreshToken(token);
 
-    // Find user
-    const user = await User.findById(payload.sub);
+    // Find user with shop populated
+    const user = await User.findById(payload.sub).populate('shop', 'name');
     if (!user) {
       throw new AuthError('User not found', 'USER_NOT_FOUND', 401);
     }
@@ -331,9 +356,16 @@ export class AuthService {
       email: user.email,
     };
 
-    // Include shopId for staff members
+    // Include shopId for staff members (handle both populated and unpopulated shop field)
     if (user.shop) {
-      payload.shopId = user.shop.toString();
+      const populatedShopId = user.populated('shop');
+      if (populatedShopId) {
+        // Shop is populated — use the original ObjectId from populated()
+        payload.shopId = populatedShopId.toString();
+      } else {
+        // Shop is just an ObjectId reference
+        payload.shopId = (user.shop as Types.ObjectId).toString();
+      }
     }
 
     return jwt.sign(payload, getAccessSecret(), {
@@ -425,7 +457,7 @@ export class AuthService {
    * Get user by ID
    */
   async getUserById(userId: string): Promise<UserPublicData | null> {
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).populate('shop', 'name');
     if (!user) {
       return null;
     }

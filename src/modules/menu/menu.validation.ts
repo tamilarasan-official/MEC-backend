@@ -162,11 +162,11 @@ export const categoryIdParamSchema = z.object({
 export const menuQuerySchema = z.object({
   categoryId: z.string().regex(objectIdPattern, 'Invalid category ID format').optional(),
   search: z.string().max(100).optional(),
-  availableOnly: z.enum(['true', 'false']).optional().transform(val => val === 'true'),
-  vegetarianOnly: z.enum(['true', 'false']).optional().transform(val => val === 'true'),
+  availableOnly: z.string().optional().transform(val => val === 'true'),
+  vegetarianOnly: z.string().optional().transform(val => val === 'true'),
   minPrice: z.string().optional().transform(val => val ? parseFloat(val) : undefined),
   maxPrice: z.string().optional().transform(val => val ? parseFloat(val) : undefined),
-});
+}).passthrough(); // Allow extra query params to pass through
 
 // ============================================
 // TYPE EXPORTS

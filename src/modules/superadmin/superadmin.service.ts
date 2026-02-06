@@ -496,6 +496,174 @@ class SuperadminService {
       },
     };
   }
+
+  // ============================================
+  // OWNER-SHOP DIAGNOSTIC & FIX METHODS
+  // ============================================
+
+  /**
+   * Get diagnostic information about owner-shop relationships
+   */
+  async diagnoseOwnerShopLinks(): Promise<{
+    owners: Array<{
+      id: string;
+      name: string;
+      email: string;
+      shopId: string | null;
+      shopName: string | null;
+      hasShopLinked: boolean;
+    }>;
+    shops: Array<{
+      id: string;
+      name: string;
+      ownerId: string | null;
+      ownerName: string | null;
+      ownerEmail: string | null;
+      hasOwnerLinked: boolean;
+    }>;
+    issues: Array<{
+      type: 'owner_without_shop' | 'shop_without_owner' | 'mismatch';
+      description: string;
+      ownerId?: string;
+      shopId?: string;
+    }>;
+  }> {
+    // Get all owners with their shop info
+    const owners = await User.find({ role: 'owner' })
+      .populate('shop', 'name')
+      .select('name email shop')
+      .lean();
+
+    // Get all shops with their owner info
+    const shops = await Shop.find({})
+      .populate('owner', 'name email')
+      .select('name owner')
+      .lean();
+
+    const issues: Array<{
+      type: 'owner_without_shop' | 'shop_without_owner' | 'mismatch';
+      description: string;
+      ownerId?: string;
+      shopId?: string;
+    }> = [];
+
+    // Map owners
+    const ownerResults = owners.map(owner => {
+      const shop = owner.shop as unknown as { _id: Types.ObjectId; name: string } | null;
+      const hasShopLinked = !!shop;
+
+      if (!hasShopLinked) {
+        issues.push({
+          type: 'owner_without_shop',
+          description: `Owner "${owner.name}" (${owner.email}) has no shop linked`,
+          ownerId: owner._id.toString(),
+        });
+      }
+
+      return {
+        id: owner._id.toString(),
+        name: owner.name,
+        email: owner.email,
+        shopId: shop?._id?.toString() || null,
+        shopName: shop?.name || null,
+        hasShopLinked,
+      };
+    });
+
+    // Map shops
+    const shopResults = shops.map(shop => {
+      const owner = shop.owner as unknown as { _id: Types.ObjectId; name: string; email: string } | null;
+      const hasOwnerLinked = !!owner;
+
+      if (!hasOwnerLinked) {
+        issues.push({
+          type: 'shop_without_owner',
+          description: `Shop "${shop.name}" has no owner linked`,
+          shopId: shop._id.toString(),
+        });
+      }
+
+      return {
+        id: shop._id.toString(),
+        name: shop.name,
+        ownerId: owner?._id?.toString() || null,
+        ownerName: owner?.name || null,
+        ownerEmail: owner?.email || null,
+        hasOwnerLinked,
+      };
+    });
+
+    // Check for mismatches (owner points to shop but shop doesn't point back)
+    for (const owner of ownerResults) {
+      if (owner.shopId) {
+        const shop = shopResults.find(s => s.id === owner.shopId);
+        if (shop && shop.ownerId !== owner.id) {
+          issues.push({
+            type: 'mismatch',
+            description: `Owner "${owner.name}" points to shop "${shop.name}" but shop points to different owner`,
+            ownerId: owner.id,
+            shopId: shop.id,
+          });
+        }
+      }
+    }
+
+    return {
+      owners: ownerResults,
+      shops: shopResults,
+      issues,
+    };
+  }
+
+  /**
+   * Link an owner to a shop (fixes broken relationships)
+   */
+  async linkOwnerToShop(ownerId: string, shopId: string): Promise<{
+    success: boolean;
+    owner: { id: string; name: string; email: string };
+    shop: { id: string; name: string };
+  }> {
+    // Validate IDs
+    if (!Types.ObjectId.isValid(ownerId) || !Types.ObjectId.isValid(shopId)) {
+      throw new Error('Invalid owner or shop ID format');
+    }
+
+    // Find owner
+    const owner = await User.findById(ownerId);
+    if (!owner) {
+      throw new Error('Owner not found');
+    }
+    if (owner.role !== 'owner') {
+      throw new Error('User is not an owner');
+    }
+
+    // Find shop
+    const shop = await Shop.findById(shopId);
+    if (!shop) {
+      throw new Error('Shop not found');
+    }
+
+    // Update owner's shop reference
+    owner.shop = new Types.ObjectId(shopId);
+    await owner.save();
+
+    // Update shop's owner reference
+    shop.owner = new Types.ObjectId(ownerId);
+    await shop.save();
+
+    return {
+      success: true,
+      owner: {
+        id: owner._id.toString(),
+        name: owner.name,
+        email: owner.email,
+      },
+      shop: {
+        id: shop._id.toString(),
+        name: shop.name,
+      },
+    };
+  }
 }
 
 // Export singleton instance

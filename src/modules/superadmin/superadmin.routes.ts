@@ -60,6 +60,26 @@ router.get('/transactions/collections', superadminController.getTransactionColle
 router.post('/transactions/migrate', superadminController.migrateTransactions);
 
 // ============================================
+// DIAGNOSTIC & FIX ROUTES
+// ============================================
+
+/**
+ * Diagnose owner-shop relationships
+ * GET /api/v1/superadmin/diagnose/owner-shop
+ * Role: superadmin
+ * Returns: List of owners and shops with their relationships and any issues found
+ */
+router.get('/diagnose/owner-shop', superadminController.diagnoseOwnerShopLinks);
+
+/**
+ * Link an owner to a shop (fix broken relationships)
+ * POST /api/v1/superadmin/fix/owner-shop
+ * Body: { ownerId: string, shopId: string }
+ * Role: superadmin
+ */
+router.post('/fix/owner-shop', superadminController.linkOwnerToShop);
+
+// ============================================
 // EXPORT
 // ============================================
 

@@ -9,11 +9,11 @@ import {
   validateCreateOrder,
   validateUpdateStatus,
   validateVerifyQr,
-  validateOrderQuery,
   validateOrderIdParam,
   validateCancelOrder,
   validateCreateLaundryOrder,
   validateCreateXeroxOrder,
+  type OrderQueryInput,
 } from './order.validation.js';
 import { AppError, asyncHandler } from '../../shared/middleware/error.middleware.js';
 import { HttpStatus } from '../../config/constants.js';
@@ -175,13 +175,10 @@ export class OrderController {
   getUserOrders = asyncHandler(async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
     const user = req.user as AuthUser;
 
-    // Validate query params
-    const queryValidation = validateOrderQuery(req.query);
-    if (!queryValidation.success) {
-      throw AppError.validation('Invalid query parameters', queryValidation.errors);
-    }
+    // Query params are already validated & transformed by validateQuery middleware in routes
+    const query = req.query as unknown as OrderQueryInput;
 
-    const result = await orderService.getUserOrders(user.id, queryValidation.data);
+    const result = await orderService.getUserOrders(user.id, query);
 
     res.json({
       success: true,
@@ -200,11 +197,8 @@ export class OrderController {
   getShopOrders = asyncHandler(async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
     const user = req.user as AuthUser;
 
-    // Validate query params
-    const queryValidation = validateOrderQuery(req.query);
-    if (!queryValidation.success) {
-      throw AppError.validation('Invalid query parameters', queryValidation.errors);
-    }
+    // Query params are already validated & transformed by validateQuery middleware in routes
+    const query = req.query as unknown as OrderQueryInput;
 
     // Determine shop ID based on role
     let shopId: string | undefined;
@@ -219,7 +213,7 @@ export class OrderController {
       shopId = user.shopId;
     }
 
-    const result = await orderService.getShopOrders(shopId, queryValidation.data);
+    const result = await orderService.getShopOrders(shopId, query);
 
     res.json({
       success: true,

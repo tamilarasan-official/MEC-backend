@@ -577,6 +577,73 @@ export class UserController {
       next(error);
     }
   }
+
+  /**
+   * Reset user password (superadmin only)
+   * PUT /superadmin/users/:id/reset-password
+   */
+  async resetPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { password } = req.body;
+
+      // Validate ID
+      const idValidation = objectIdSchema.safeParse(id);
+      if (!idValidation.success) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: {
+            code: 'INVALID_ID',
+            message: 'Invalid user ID format',
+          },
+        });
+        return;
+      }
+
+      // Validate password
+      if (!password || typeof password !== 'string' || password.length < 8) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Password must be at least 8 characters long',
+          },
+        });
+        return;
+      }
+
+      const user = await userService.resetPassword(idValidation.data, password);
+
+      logger.info('User password reset by superadmin', {
+        userId: id,
+        resetBy: req.user?.id,
+      });
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: {
+          id: user._id,
+          username: user.username,
+          email: user.email,
+          name: user.name,
+        },
+        message: 'Password reset successfully',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      if (error instanceof UserError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+        });
+        return;
+      }
+      next(error);
+    }
+  }
 }
 
 // Export singleton instance

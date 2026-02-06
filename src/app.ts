@@ -184,9 +184,51 @@ app.use(checkIpBlock);
 app.use('/api/v1', csrfProtection);
 
 // General rate limiting
-const generalLimiter = rateLimit({
+// Uses a smart key: authenticated users are keyed by user ID (from JWT),
+// unauthenticated requests are keyed by IP.
+// This is critical for campus networks where hundreds of students share one public IP.
+function extractUserIdFromToken(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  try {
+    const token = authHeader.slice(7);
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    return decoded.id || decoded.sub || null;
+  } catch {
+    return null;
+  }
+}
+
+// Authenticated users: per-user limit (80 req / 15 min)
+const authenticatedLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 80,
+  message: {
+    success: false,
+    error: {
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: ErrorMessages.RATE_LIMIT_EXCEEDED,
+    },
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request): string => {
+    const userId = extractUserIdFromToken(req);
+    return `user:${userId}`;
+  },
+  skip: (req: Request) => {
+    if (req.path === '/health') return true;
+    // Skip if no valid token — the unauthenticated limiter handles those
+    return !extractUserIdFromToken(req);
+  },
+});
+
+// Unauthenticated requests: stricter IP-based limit (50 req / 15 min)
+const unauthenticatedLimiter = rateLimit({
   windowMs: RateLimitConfig.GENERAL.windowMs,
-  max: RateLimitConfig.GENERAL.maxRequests,
+  max: 50,
   message: {
     success: false,
     error: {
@@ -197,12 +239,14 @@ const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req: Request) => {
-    // Skip rate limiting for health check
-    return req.path === '/health';
+    if (req.path === '/health') return true;
+    // Skip if authenticated — the authenticated limiter handles those
+    return !!extractUserIdFromToken(req);
   },
 });
 
-app.use(generalLimiter);
+app.use(authenticatedLimiter);
+app.use(unauthenticatedLimiter);
 
 // Request logging middleware
 app.use((req: Request, _res: Response, next: NextFunction) => {
@@ -349,6 +393,7 @@ app.use((err: Error | AppError, req: Request, res: Response, _next: NextFunction
   let message: string = ErrorMessages.INTERNAL_ERROR;
   let code: string = 'INTERNAL_ERROR';
   let isOperational = false;
+  let details: Record<string, unknown> | unknown[] | undefined;
 
   // Handle known errors
   if (err instanceof AppError) {
@@ -356,6 +401,7 @@ app.use((err: Error | AppError, req: Request, res: Response, _next: NextFunction
     message = err.message;
     code = err.code;
     isOperational = err.isOperational;
+    details = err.details;
   }
 
   // Log error
@@ -375,18 +421,19 @@ app.use((err: Error | AppError, req: Request, res: Response, _next: NextFunction
     });
   }
 
-  // Send error response (hide stack trace unless explicitly in development)
-  // Default to secure mode - only show details in development
+  // Send error response
+  // Include validation details for VALIDATION_ERROR (safe to expose)
+  // Hide stack trace unless explicitly in development
   const isDev = process.env['NODE_ENV'] === 'development';
   res.status(statusCode).json({
     success: false,
     error: {
       code,
       message,
-      ...(isDev && {
-        stack: err.stack,
-        details: err.message,
-      }),
+      // Always include validation details - they help users fix their input
+      ...(details && { details }),
+      // Only include stack in development
+      ...(isDev && { stack: err.stack }),
     },
   });
 });

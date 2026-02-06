@@ -1,8 +1,11 @@
 import mongoose, { Types, FilterQuery } from 'mongoose';
+import bcrypt from 'bcryptjs';
 import { User, IUserDocument, UserRole } from './user.model.js';
 import { getCurrentTransactionModel } from '../wallet/monthly-transaction.util.js';
 import { Order } from '../orders/order.model.js';
 import { logger } from '../../config/logger.js';
+
+const SALT_ROUNDS = 12;
 
 // Custom error class for user operations
 export class UserError extends Error {
@@ -521,6 +524,31 @@ export class UserService {
     logger.debug('Leaderboard fetched', { count: rankedLeaderboard.length });
 
     return rankedLeaderboard;
+  }
+
+  /**
+   * Reset user password (superadmin only)
+   */
+  async resetPassword(userId: string, newPassword: string): Promise<IUserDocument> {
+    const user = await User.findById(userId);
+
+    if (!user) {
+      throw new UserError('User not found', 'USER_NOT_FOUND', 404);
+    }
+
+    // Hash the new password
+    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    user.passwordHash = passwordHash;
+
+    // Clear any account lockout
+    user.failedLoginAttempts = 0;
+    user.accountLockedUntil = undefined;
+
+    await user.save();
+
+    logger.info('User password reset by superadmin', { userId, username: user.username });
+
+    return user;
   }
 }
 
