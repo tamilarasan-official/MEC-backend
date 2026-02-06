@@ -33,12 +33,14 @@ export function csrfTokenGenerator(req: Request, res: Response, next: NextFuncti
 
     // Set as httpOnly: false so client-side JavaScript can read it
     // This is intentional - the security comes from the double-submit pattern
+    const isProduction = process.env['NODE_ENV'] === 'production';
     res.cookie(CSRF_COOKIE_NAME, token, {
       httpOnly: false,
-      secure: process.env['NODE_ENV'] === 'production',
-      sameSite: process.env['NODE_ENV'] === 'production' ? 'none' : 'strict',
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'strict',
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       path: '/',
+      domain: isProduction ? '.welocalhost.com' : undefined,
     });
 
     // Also attach to request for potential use in response

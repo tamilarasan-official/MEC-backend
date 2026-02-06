@@ -24,6 +24,7 @@ function setRefreshTokenCookie(res: Response, token: string): void {
     sameSite: isProduction ? 'none' : 'lax', // 'none' required for cross-origin cookies
     maxAge: REFRESH_TOKEN_MAX_AGE,
     path: '/api/v1/auth', // Only send to auth endpoints
+    domain: isProduction ? '.welocalhost.com' : undefined,
   });
 }
 
@@ -36,6 +37,7 @@ function clearRefreshTokenCookie(res: Response): void {
     secure: isProduction,
     sameSite: isProduction ? 'none' : 'lax',
     path: '/api/v1/auth',
+    domain: isProduction ? '.welocalhost.com' : undefined,
   });
 }
 
