@@ -20,6 +20,7 @@ export const ORDER_EVENTS = {
   STATUS_CHANGE: 'order:status_changed',
   ORDER_READY: 'order:ready',
   ORDER_COMPLETED: 'order:completed',
+  BALANCE_UPDATE: 'wallet:updated',
 
   // Room names
   SHOP_ROOM: (shopId: string) => `shop:${shopId}`,
@@ -198,6 +199,50 @@ export class OrderEvents {
   }
 
   /**
+   * Emit wallet balance update to user
+   */
+  emitBalanceUpdate(userId: string, type: 'debit' | 'credit' | 'refund', amount: number, balance: number, message: string): void {
+    if (!this.io) {
+      logger.warn('Socket.io not initialized, cannot emit balance update event');
+      return;
+    }
+
+    const room = ORDER_EVENTS.USER_ROOM(userId);
+    this.io.to(room).emit(ORDER_EVENTS.BALANCE_UPDATE, {
+      type,
+      amount,
+      balance,
+      message,
+    });
+    logger.debug(`Emitted balance update to room ${room}`, { type, amount, balance });
+  }
+
+  /**
+   * Emit partial delivery notification to user
+   */
+  emitPartialDelivery(userId: string, order: IOrderDocument): void {
+    if (!this.io) {
+      logger.warn('Socket.io not initialized, cannot emit partial delivery event');
+      return;
+    }
+
+    const room = ORDER_EVENTS.USER_ROOM(userId);
+    const deliveredCount = order.items.filter(i => i.delivered).length;
+    const totalCount = order.items.length;
+    const payload = {
+      ...this.formatOrderPayload(order),
+      notification: {
+        title: 'Partial Delivery',
+        body: `${deliveredCount} of ${totalCount} items from order ${order.orderNumber} have been delivered.`,
+        type: 'order_partial_delivery',
+      },
+    };
+
+    this.io.to(room).emit(ORDER_EVENTS.STATUS_CHANGE, payload);
+    logger.debug(`Emitted partial delivery event to room ${room}`, { orderId: order._id });
+  }
+
+  /**
    * Format order payload for socket emission
    */
   private formatOrderPayload(order: IOrderDocument): Record<string, unknown> {
@@ -212,6 +257,7 @@ export class OrderEvents {
         name: item.name,
         quantity: item.quantity,
         subtotal: item.subtotal,
+        delivered: item.delivered || false,
       })),
       placedAt: order.placedAt,
       preparingAt: order.preparingAt,

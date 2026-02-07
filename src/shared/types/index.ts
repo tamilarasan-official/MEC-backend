@@ -136,7 +136,7 @@ export interface RefreshTokenPayload {
  */
 export interface AuthUser {
   id: string;
-  email: string;
+  email?: string;
   role: UserRole;
   shopId?: string;
 }

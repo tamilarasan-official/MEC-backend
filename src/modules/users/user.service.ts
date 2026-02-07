@@ -4,6 +4,7 @@ import { User, IUserDocument, UserRole } from './user.model.js';
 import { getCurrentTransactionModel } from '../wallet/monthly-transaction.util.js';
 import { Order } from '../orders/order.model.js';
 import { logger } from '../../config/logger.js';
+import { convertToProxyUrl } from '../../shared/utils/image-url.util.js';
 
 const SALT_ROUNDS = 12;
 
@@ -36,6 +37,7 @@ export interface UpdateProfileData {
   email?: string | undefined;
   phone?: string | undefined;
   avatarUrl?: string | undefined;
+  dietPreference?: 'all' | 'veg' | 'nonveg' | undefined;
 }
 
 export interface PaginatedUsers {
@@ -97,6 +99,7 @@ export class UserService {
     if (data.email !== undefined) user.email = data.email;
     if (data.phone !== undefined) user.phone = data.phone;
     if (data.avatarUrl !== undefined) user.avatarUrl = data.avatarUrl;
+    if (data.dietPreference !== undefined) user.dietPreference = data.dietPreference;
 
     await user.save();
 
@@ -515,9 +518,10 @@ export class UserService {
       },
     ]);
 
-    // Add rank to each entry
+    // Add rank and convert avatar URLs to proxy URLs
     const rankedLeaderboard = leaderboardData.map((entry, index) => ({
       ...entry,
+      avatarUrl: entry.avatarUrl ? convertToProxyUrl(entry.avatarUrl) : null,
       rank: index + 1,
     }));
 

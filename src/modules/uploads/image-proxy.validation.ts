@@ -13,6 +13,7 @@ const ALLOWED_FOLDERS = [
   'categories',
   'shops',
   'users',
+  'avatars',
   'offers',
   // Legacy folder names (may have existing data in S3)
   'meccanteen',

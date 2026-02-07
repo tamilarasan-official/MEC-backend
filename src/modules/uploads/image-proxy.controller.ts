@@ -8,13 +8,18 @@ import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { logger } from '../../config/logger.js';
 import { Readable } from 'stream';
 import { validateImageProxyParams } from './image-proxy.validation.js';
+import { getClientIp } from '../../shared/utils/ip.util.js';
 
 // Garage S3 configuration
 const GARAGE_ENDPOINT = process.env['GARAGE_ENDPOINT'] || '';
 const GARAGE_ACCESS_KEY = process.env['GARAGE_ACCESS_KEY'] || '';
 const GARAGE_SECRET_KEY = process.env['GARAGE_SECRET_KEY'] || '';
 const GARAGE_BUCKET = process.env['GARAGE_BUCKET'] || 'mecfoodmenu';
+const GARAGE_AVATAR_BUCKET = process.env['GARAGE_AVATAR_BUCKET'] || 'mecavatars';
 const GARAGE_REGION = process.env['GARAGE_REGION'] || 'garage';
+
+// Folders stored in the avatar bucket
+const AVATAR_BUCKET_FOLDERS = ['avatars', 'user-avatars'];
 
 // Cache S3 client
 let s3Client: S3Client | null = null;
@@ -63,7 +68,7 @@ export async function proxyImage(req: Request, res: Response, next: NextFunction
         folder,
         filename,
         errors: validation.errors.map(e => e.message),
-        ip: req.ip,
+        ip: getClientIp(req),
       });
       res.status(400).json({ error: 'Invalid image path' });
       return;
@@ -72,12 +77,17 @@ export async function proxyImage(req: Request, res: Response, next: NextFunction
     // Construct the S3 key using validated data
     const key = `${validation.data.folder}/${validation.data.filename}`;
 
-    logger.info('Image proxy request', { folder: validation.data.folder, filename: validation.data.filename });
+    // Resolve bucket: avatars go to the dedicated avatar bucket
+    const bucket = AVATAR_BUCKET_FOLDERS.includes(validation.data.folder)
+      ? GARAGE_AVATAR_BUCKET
+      : GARAGE_BUCKET;
+
+    logger.info('Image proxy request', { folder: validation.data.folder, filename: validation.data.filename, bucket });
 
     const client = getS3Client();
 
     const command = new GetObjectCommand({
-      Bucket: GARAGE_BUCKET,
+      Bucket: bucket,
       Key: key,
     });
 

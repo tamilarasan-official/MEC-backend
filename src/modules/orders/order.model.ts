@@ -1,18 +1,19 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose';
 
 // Order status types
-export const ORDER_STATUSES = ['pending', 'preparing', 'ready', 'completed', 'cancelled'] as const;
+export const ORDER_STATUSES = ['pending', 'preparing', 'ready', 'partially_delivered', 'completed', 'cancelled'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 // Payment status types
-export const PAYMENT_STATUSES = ['pending', 'paid', 'failed'] as const;
+export const PAYMENT_STATUSES = ['pending', 'paid', 'failed', 'refunded'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 // Valid status transitions
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   pending: ['preparing', 'cancelled'],
   preparing: ['ready', 'cancelled'],
-  ready: ['completed', 'cancelled'],
+  ready: ['partially_delivered', 'completed', 'cancelled'],
+  partially_delivered: ['completed', 'cancelled'],
   completed: [],
   cancelled: [],
 };
@@ -27,6 +28,7 @@ export interface IOrderItem {
   subtotal: number;
   imageUrl?: string;
   category?: string;
+  delivered?: boolean;
 }
 
 // Service types
@@ -95,6 +97,7 @@ export interface IOrder {
   placedAt: Date;
   preparingAt?: Date;
   readyAt?: Date;
+  partiallyDeliveredAt?: Date;
   completedAt?: Date;
   cancelledAt?: Date;
 
@@ -151,6 +154,10 @@ const OrderItemSchema = new Schema<IOrderItem>(
     },
     category: {
       type: String,
+    },
+    delivered: {
+      type: Boolean,
+      default: false,
     },
   },
   { _id: false }
@@ -288,6 +295,9 @@ const OrderSchema = new Schema<IOrderDocument, IOrderModel>(
       type: Date,
     },
     readyAt: {
+      type: Date,
+    },
+    partiallyDeliveredAt: {
       type: Date,
     },
     completedAt: {

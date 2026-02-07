@@ -7,6 +7,7 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { logger } from '../../config/logger.js';
+import { getClientIp } from '../utils/ip.util.js';
 
 // CSRF token configuration
 const CSRF_TOKEN_LENGTH = 32;
@@ -92,7 +93,7 @@ export function csrfValidator(req: Request, res: Response, next: NextFunction): 
       method: req.method,
       hasCookie: !!cookieToken,
       hasHeader: !!headerToken,
-      ip: req.ip,
+      ip: getClientIp(req),
     });
     res.status(403).json({
       success: false,
@@ -112,7 +113,7 @@ export function csrfValidator(req: Request, res: Response, next: NextFunction): 
     logger.warn('CSRF validation failed: token mismatch', {
       path: req.path,
       method: req.method,
-      ip: req.ip,
+      ip: getClientIp(req),
     });
     res.status(403).json({
       success: false,

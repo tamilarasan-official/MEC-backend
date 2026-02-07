@@ -305,10 +305,97 @@ export class WalletController {
       const filters = validationResult.data;
       const result = await walletService.getAllTransactions(filters);
 
+      // Map transactions to include flat userId/userName from populated user field
+      const transactions = result.transactions.map(tx => {
+        const json = tx.toJSON();
+        const user = json.user as { _id?: string; name?: string } | string | undefined;
+        return {
+          ...json,
+          userId: typeof user === 'object' && user ? String(user._id || '') : String(user || ''),
+          userName: typeof user === 'object' && user ? user.name : undefined,
+        };
+      });
+
       res.status(HttpStatus.OK).json({
         success: true,
-        data: result.transactions,
-        pagination: result.pagination,
+        data: {
+          transactions,
+          pagination: result.pagination,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get vendor payables for all shops
+   * GET /accountant/vendor-payables
+   */
+  async getVendorPayables(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = req.user?.id;
+
+      if (!adminId) {
+        res.status(HttpStatus.UNAUTHORIZED).json({
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'User not authenticated',
+          },
+        });
+        return;
+      }
+
+      const period = req.query.period as string | undefined;
+      const result = await walletService.getVendorPayables(period);
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: result,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Update vendor transfer status
+   * POST /accountant/vendor-transfers
+   */
+  async updateVendorTransfer(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = req.user?.id;
+
+      if (!adminId) {
+        res.status(HttpStatus.UNAUTHORIZED).json({
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'User not authenticated',
+          },
+        });
+        return;
+      }
+
+      // Body is already validated by vendorTransferSchema middleware
+      const { shopId, period, amount, status, notes } = req.body;
+
+      const result = await walletService.updateVendorTransfer(
+        shopId,
+        period,
+        amount,
+        status,
+        notes,
+        adminId
+      );
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: result,
+        message: `Transfer ${status === 'completed' ? 'marked as completed' : 'updated'}`,
         timestamp: new Date().toISOString(),
       });
     } catch (error) {

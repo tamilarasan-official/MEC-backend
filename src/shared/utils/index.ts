@@ -96,3 +96,6 @@ export {
 } from './storage.util.js';
 
 export type { UploadResult, StorageFolder } from './storage.util.js';
+
+// IP utilities
+export { getClientIp } from './ip.util.js';

@@ -155,7 +155,7 @@ export class ShopService {
         await ownerUser.save({ session });
         logger.info('Owner user created successfully:', {
           userId: ownerUser._id.toString(),
-          email: maskEmail(ownerUser.email),
+          email: maskEmail(ownerUser.email || ''),
           role: ownerUser.role,
           shopId: ownerUser.shop?.toString(),
         });
@@ -184,7 +184,7 @@ export class ShopService {
           shop,
           owner: {
             id: ownerUser._id.toString(),
-            email: ownerUser.email,
+            email: ownerUser.email || '',
             name: ownerUser.name,
           },
         };

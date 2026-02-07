@@ -9,6 +9,8 @@ import {
 } from './user.validation.js';
 import { HttpStatus } from '../../config/constants.js';
 import { logger } from '../../config/logger.js';
+import { uploadAvatarFile, isStorageConfigured } from '../../shared/utils/storage.util.js';
+import { convertToProxyUrl } from '../../shared/utils/image-url.util.js';
 
 /**
  * User Controller - Handles HTTP requests for user operations
@@ -38,10 +40,14 @@ export class UserController {
       }
 
       const user = await userService.getUserById(userId);
+      const userData = user.toJSON();
+      if (userData.avatarUrl) {
+        userData.avatarUrl = convertToProxyUrl(userData.avatarUrl as string);
+      }
 
       res.status(HttpStatus.OK).json({
         success: true,
-        data: user,
+        data: userData,
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
@@ -146,6 +152,77 @@ export class UserController {
             code: error.code,
             message: error.message,
           },
+        });
+        return;
+      }
+      next(error);
+    }
+  }
+
+  /**
+   * Upload avatar for current user
+   * PUT /student/profile/avatar
+   */
+  async uploadAvatar(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user?.id;
+
+      if (!userId) {
+        res.status(HttpStatus.UNAUTHORIZED).json({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'User not authenticated' },
+        });
+        return;
+      }
+
+      if (!isStorageConfigured()) {
+        res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          error: { code: 'STORAGE_NOT_CONFIGURED', message: 'Storage is not configured' },
+        });
+        return;
+      }
+
+      const file = (req as Request & { file?: Express.Multer.File }).file;
+      if (!file) {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          error: { code: 'FILE_REQUIRED', message: 'No avatar file uploaded' },
+        });
+        return;
+      }
+
+      logger.info('Avatar upload started', { userId, filename: file.originalname, size: file.size, mimetype: file.mimetype });
+
+      const result = await uploadAvatarFile(file.buffer, file.originalname);
+
+      if (!result.success || !result.url) {
+        logger.error('Avatar upload to S3 failed', { userId, error: result.error });
+        res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+          success: false,
+          error: { code: 'UPLOAD_FAILED', message: result.error || 'Failed to upload avatar' },
+        });
+        return;
+      }
+
+      // Update user's avatarUrl (store raw S3 URL in DB)
+      const user = await userService.updateProfile(userId, { avatarUrl: result.url });
+
+      // Return proxy URL to frontend (Garage doesn't support anonymous access)
+      const proxyUrl = convertToProxyUrl(result.url);
+
+      logger.info('Avatar uploaded', { userId, key: result.key });
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: { avatarUrl: proxyUrl },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      if (error instanceof UserError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: { code: error.code, message: error.message },
         });
         return;
       }

@@ -21,6 +21,7 @@ import { PaginationMeta } from '../../shared/types/index.js';
 export interface OrderResult {
   order: IOrderDocument;
   qrData: string;
+  newBalance?: number;
 }
 
 export interface PaginatedOrders {
@@ -154,7 +155,7 @@ export class OrderService {
         orderItems.push(orderItem);
       }
 
-      // 5. Check user balance (balance is only checked here, deduction happens on order completion)
+      // 5. Check user balance
       if (user.balance < total) {
         throw new AppError(
           `Insufficient balance. Required: ${total}, Available: ${user.balance}`,
@@ -175,7 +176,30 @@ export class OrderService {
       // 8. Generate QR data
       const qrData = generateQrData(orderId.toString(), pickupToken, data.shopId);
 
-      // 9. Create the order (wallet deduction happens on order completion, not here)
+      // 9. Deduct wallet IMMEDIATELY at order creation
+      const balanceBefore = user.balance;
+      user.balance -= total;
+      await user.save({ session });
+
+      // 10. Create debit transaction record
+      const TransactionModel = getCurrentTransactionModel();
+      await TransactionModel.create(
+        [
+          {
+            user: new Types.ObjectId(userId),
+            type: 'debit',
+            amount: total,
+            balanceBefore,
+            balanceAfter: user.balance,
+            description: `Order payment - ${orderNumber}`,
+            status: 'completed',
+            order: orderId,
+          },
+        ],
+        { session }
+      );
+
+      // 11. Create the order with paymentStatus 'paid' (wallet already deducted)
       const order = new Order({
         _id: orderId,
         orderNumber,
@@ -184,7 +208,7 @@ export class OrderService {
         items: orderItems,
         total,
         status: 'pending',
-        paymentStatus: 'pending',
+        paymentStatus: 'paid',
         notes: data.notes,
         pickupToken,
         qrData,
@@ -193,10 +217,10 @@ export class OrderService {
 
       await order.save({ session });
 
-      // 10. Commit transaction
+      // 12. Commit transaction
       await session.commitTransaction();
 
-      // 11. Populate and return order
+      // 13. Populate and return order (include newBalance for frontend)
       const populatedOrder = await Order.findById(orderId)
         .populate('user', 'name email phone')
         .populate('shop', 'name')
@@ -205,6 +229,7 @@ export class OrderService {
       return {
         order: populatedOrder!,
         qrData,
+        newBalance: user.balance,
       };
     } catch (error) {
       await session.abortTransaction();
@@ -294,7 +319,30 @@ export class OrderService {
       // 7. Generate QR data
       const qrData = generateQrData(orderId.toString(), pickupToken, data.shopId);
 
-      // 8. Create the order
+      // 8. Deduct wallet IMMEDIATELY at order creation
+      const balanceBefore = user.balance;
+      user.balance -= total;
+      await user.save({ session });
+
+      // 9. Create debit transaction record
+      const TransactionModel = getCurrentTransactionModel();
+      await TransactionModel.create(
+        [
+          {
+            user: new Types.ObjectId(userId),
+            type: 'debit',
+            amount: total,
+            balanceBefore,
+            balanceAfter: user.balance,
+            description: `Order payment - ${orderNumber}`,
+            status: 'completed',
+            order: orderId,
+          },
+        ],
+        { session }
+      );
+
+      // 10. Create the order with paymentStatus 'paid'
       const order = new Order({
         _id: orderId,
         orderNumber,
@@ -303,7 +351,7 @@ export class OrderService {
         items: [], // No food items for service orders
         total,
         status: 'pending',
-        paymentStatus: 'pending',
+        paymentStatus: 'paid',
         serviceType: 'laundry',
         serviceDetails: {
           type: 'laundry',
@@ -320,10 +368,10 @@ export class OrderService {
 
       await order.save({ session });
 
-      // 9. Commit transaction
+      // 11. Commit transaction
       await session.commitTransaction();
 
-      // 10. Populate and return order
+      // 12. Populate and return order
       const populatedOrder = await Order.findById(orderId)
         .populate('user', 'name email phone')
         .populate('shop', 'name');
@@ -331,6 +379,7 @@ export class OrderService {
       return {
         order: populatedOrder!,
         qrData,
+        newBalance: user.balance,
       };
     } catch (error) {
       await session.abortTransaction();
@@ -407,7 +456,30 @@ export class OrderService {
       // 7. Generate QR data
       const qrData = generateQrData(orderId.toString(), pickupToken, data.shopId);
 
-      // 8. Create the order
+      // 8. Deduct wallet IMMEDIATELY at order creation
+      const balanceBefore = user.balance;
+      user.balance -= total;
+      await user.save({ session });
+
+      // 9. Create debit transaction record
+      const TransactionModel = getCurrentTransactionModel();
+      await TransactionModel.create(
+        [
+          {
+            user: new Types.ObjectId(userId),
+            type: 'debit',
+            amount: total,
+            balanceBefore,
+            balanceAfter: user.balance,
+            description: `Order payment - ${orderNumber}`,
+            status: 'completed',
+            order: orderId,
+          },
+        ],
+        { session }
+      );
+
+      // 10. Create the order with paymentStatus 'paid'
       const order = new Order({
         _id: orderId,
         orderNumber,
@@ -416,7 +488,7 @@ export class OrderService {
         items: [], // No food items for service orders
         total,
         status: 'pending',
-        paymentStatus: 'pending',
+        paymentStatus: 'paid',
         serviceType: 'xerox',
         serviceDetails: {
           type: 'xerox',
@@ -436,10 +508,10 @@ export class OrderService {
 
       await order.save({ session });
 
-      // 9. Commit transaction
+      // 11. Commit transaction
       await session.commitTransaction();
 
-      // 10. Populate and return order
+      // 12. Populate and return order
       const populatedOrder = await Order.findById(orderId)
         .populate('user', 'name email phone')
         .populate('shop', 'name');
@@ -447,6 +519,7 @@ export class OrderService {
       return {
         order: populatedOrder!,
         qrData,
+        newBalance: user.balance,
       };
     } catch (error) {
       await session.abortTransaction();
@@ -489,7 +562,7 @@ export class OrderService {
     const query: Record<string, unknown> = { user: new Types.ObjectId(userId) };
 
     if (status) {
-      query['status'] = status;
+      query['status'] = Array.isArray(status) ? { $in: status } : status;
     }
 
     if (startDate || endDate) {
@@ -543,7 +616,7 @@ export class OrderService {
     }
 
     if (status) {
-      query['status'] = status;
+      query['status'] = Array.isArray(status) ? { $in: status } : status;
     }
 
     if (startDate || endDate) {
@@ -617,11 +690,12 @@ export class OrderService {
 
       // Handle cancellation with refund
       if (newStatus === 'cancelled') {
-        // Only refund if payment was already made (paymentStatus === 'paid')
-        // With the new flow, wallet is only deducted on completion, so most cancellations
-        // won't need refunds. This handles the edge case where payment was already processed.
+        // Refund if payment was already made (paymentStatus === 'paid')
+        // With instant-deduction flow, wallet is deducted at order creation,
+        // so cancellations should always trigger refunds for paid orders.
         if (order.paymentStatus === 'paid') {
           await this.processRefund(order, handledBy, reason, session);
+          order.paymentStatus = 'refunded';
         }
 
         if (reason) {
@@ -638,11 +712,12 @@ export class OrderService {
         case 'ready':
           order.readyAt = new Date();
           break;
+        case 'partially_delivered':
+          order.partiallyDeliveredAt = new Date();
+          break;
         case 'completed':
           order.completedAt = new Date();
-
-          // Deduct wallet on order completion (QR scan)
-          await this.processPaymentOnCompletion(order, session);
+          // Payment already processed at order creation - no wallet operation needed
           break;
       }
 
@@ -663,6 +738,75 @@ export class OrderService {
     } finally {
       session.endSession();
     }
+  }
+
+  /**
+   * Mark an individual item as delivered/undelivered in an order.
+   * Auto-updates order status:
+   *  - If some items delivered → partially_delivered
+   *  - If all items delivered → completed
+   *  - If none delivered (unchecked) → back to ready
+   */
+  async markItemDelivered(
+    orderId: string,
+    itemIndex: number,
+    delivered: boolean,
+    handledBy: string
+  ): Promise<IOrderDocument> {
+    const order = await Order.findById(orderId);
+    if (!order) {
+      throw AppError.notFound('Order not found');
+    }
+
+    // Only allow marking items on ready or partially_delivered orders
+    if (order.status !== 'ready' && order.status !== 'partially_delivered') {
+      throw new AppError(
+        `Cannot mark items on an order with status "${order.status}"`,
+        HttpStatus.BAD_REQUEST,
+        'INVALID_STATUS_FOR_DELIVERY',
+        true
+      );
+    }
+
+    if (itemIndex < 0 || itemIndex >= order.items.length) {
+      throw new AppError(
+        'Invalid item index',
+        HttpStatus.BAD_REQUEST,
+        'INVALID_ITEM_INDEX',
+        true
+      );
+    }
+
+    // Mark the item
+    order.items[itemIndex].delivered = delivered;
+    order.handledBy = new Types.ObjectId(handledBy);
+
+    // Count delivered items
+    const totalItems = order.items.length;
+    const deliveredCount = order.items.filter(i => i.delivered).length;
+
+    if (deliveredCount === totalItems) {
+      // All items delivered → completed
+      order.status = 'completed';
+      order.completedAt = new Date();
+    } else if (deliveredCount > 0) {
+      // Some items delivered → partially_delivered
+      if (order.status !== 'partially_delivered') {
+        order.status = 'partially_delivered';
+        order.partiallyDeliveredAt = new Date();
+      }
+    } else {
+      // None delivered → revert to ready
+      order.status = 'ready';
+    }
+
+    await order.save();
+
+    // Return populated order
+    return await Order.findById(orderId)
+      .populate('user', 'name email phone')
+      .populate('shop', 'name')
+      .populate('handledBy', 'name') as IOrderDocument;
   }
 
   /**
@@ -707,59 +851,16 @@ export class OrderService {
 
   /**
    * Process wallet payment when order is completed (QR scanned)
+   * NOTE: With instant-deduction flow, payment is processed at order creation.
+   * This method is now a no-op safety check.
    */
   private async processPaymentOnCompletion(
-    order: IOrderDocument,
-    session: ClientSession
+    _order: IOrderDocument,
+    _session: ClientSession
   ): Promise<void> {
-    // Skip if already paid (shouldn't happen, but safety check)
-    if (order.paymentStatus === 'paid') {
-      return;
-    }
-
-    const user = await User.findById(order.user).session(session);
-
-    if (!user) {
-      throw AppError.notFound('User not found for payment');
-    }
-
-    // Check balance (student may have spent it since placing order)
-    if (user.balance < order.total) {
-      order.paymentStatus = 'failed';
-      throw new AppError(
-        `Insufficient balance. Required: Rs. ${order.total}, Available: Rs. ${user.balance}`,
-        HttpStatus.BAD_REQUEST,
-        'INSUFFICIENT_BALANCE_ON_COMPLETION',
-        true,
-        { required: order.total, available: user.balance }
-      );
-    }
-
-    // Deduct wallet
-    const balanceBefore = user.balance;
-    user.balance -= order.total;
-    await user.save({ session });
-
-    // Update payment status
-    order.paymentStatus = 'paid';
-
-    // Create transaction record in monthly collection
-    const TransactionModel = getCurrentTransactionModel();
-    await TransactionModel.create(
-      [
-        {
-          user: order.user,
-          type: 'debit',
-          amount: order.total,
-          balanceBefore,
-          balanceAfter: user.balance,
-          description: `Order payment - ${order.orderNumber}`,
-          status: 'completed',
-          order: order._id,
-        },
-      ],
-      { session }
-    );
+    // Payment already processed at order creation time.
+    // This method is retained for backward compatibility but performs no wallet operations.
+    return;
   }
 
   /**
@@ -842,12 +943,12 @@ export class OrderService {
   }
 
   /**
-   * Get active orders for a shop (pending, preparing, ready)
+   * Get active orders for a shop (pending, preparing, ready, partially_delivered)
    * If shopId is undefined, returns active orders from all shops (for superadmin)
    */
   async getActiveShopOrders(shopId: string | undefined): Promise<IOrderDocument[]> {
     const query: Record<string, unknown> = {
-      status: { $in: ['pending', 'preparing', 'ready'] },
+      status: { $in: ['pending', 'preparing', 'ready', 'partially_delivered'] },
     };
     if (shopId) {
       query['shop'] = new Types.ObjectId(shopId);
@@ -953,12 +1054,16 @@ export class OrderService {
     let todayOrders = 0;
     let todayRevenue = 0;
     let completedToday = 0;
+    let cancelledToday = 0;
 
     for (const stat of todayStats) {
       todayOrders += stat.count;
       if (stat._id === 'completed') {
         todayRevenue += stat.revenue;
         completedToday = stat.count;
+      }
+      if (stat._id === 'cancelled') {
+        cancelledToday = stat.count;
       }
     }
 
@@ -983,6 +1088,7 @@ export class OrderService {
       totalOrders,
       totalRevenue,
       completedToday,
+      cancelledToday,
       inProgress: pendingOrders + preparingOrders,
       pendingCount: pendingOrders,
       preparingCount: preparingOrders,

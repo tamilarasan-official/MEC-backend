@@ -8,6 +8,7 @@ import { Request, Response } from 'express';
 import { RateLimitConfig, HttpStatus } from '../../config/constants.js';
 import { ErrorResponse } from '../types/index.js';
 import { recordViolation } from './ip-block.middleware.js';
+import { getClientIp } from '../utils/ip.util.js';
 
 // ============================================
 // RATE LIMIT RESPONSE HANDLER
@@ -39,14 +40,10 @@ function rateLimitHandler(req: Request, res: Response): void {
 }
 
 /**
- * Get client IP for rate limiting (extracted for reuse)
+ * Get client IP for rate limiting — delegates to shared utility
  */
 function getClientIpForRateLimit(req: Request): string {
-  const forwardedFor = req.headers['x-forwarded-for'];
-  const ip = Array.isArray(forwardedFor)
-    ? forwardedFor[0]
-    : forwardedFor?.split(',')[0]?.trim() ?? req.ip ?? 'unknown';
-  return ip;
+  return getClientIp(req);
 }
 
 /**
@@ -60,7 +57,7 @@ function skipRateLimit(req: Request): boolean {
 
   // Skip for internal/trusted requests (e.g., from load balancer)
   const trustedIps = process.env['TRUSTED_IPS']?.split(',') ?? [];
-  const clientIp = req.ip ?? '';
+  const clientIp = getClientIp(req);
   if (trustedIps.includes(clientIp)) {
     return true;
   }
@@ -77,13 +74,7 @@ function keyGenerator(req: Request): string {
     return `user:${req.user.id}`;
   }
 
-  // Use X-Forwarded-For if behind proxy, otherwise use IP
-  const forwardedFor = req.headers['x-forwarded-for'];
-  const ip = Array.isArray(forwardedFor)
-    ? forwardedFor[0]
-    : forwardedFor?.split(',')[0]?.trim() ?? req.ip ?? 'unknown';
-
-  return `ip:${ip}`;
+  return `ip:${getClientIp(req)}`;
 }
 
 // ============================================
@@ -162,7 +153,7 @@ export const adminRateLimiter = createRateLimiter({
     if (req.user?.id) {
       return `admin:${req.user.id}`;
     }
-    return `admin:${req.ip ?? 'unknown'}`;
+    return `admin:${getClientIp(req)}`;
   },
 });
 
@@ -199,7 +190,7 @@ export const orderRateLimiter = createRateLimiter({
     if (req.user?.id) {
       return `order:${req.user.id}`;
     }
-    return `order:${req.ip ?? 'unknown'}`;
+    return `order:${getClientIp(req)}`;
   },
 });
 
@@ -215,7 +206,7 @@ export const paymentRateLimiter = createRateLimiter({
     if (req.user?.id) {
       return `payment:${req.user.id}`;
     }
-    return `payment:${req.ip ?? 'unknown'}`;
+    return `payment:${getClientIp(req)}`;
   },
 });
 
@@ -230,7 +221,7 @@ export const unauthenticatedRateLimiter = createRateLimiter({
   message: 'Too many requests. Please authenticate or try again later.',
   keyGenerator: (req: Request): string => {
     // Only apply to unauthenticated requests
-    return `unauth:${req.ip ?? 'unknown'}`;
+    return `unauth:${getClientIp(req)}`;
   },
   skip: (req: Request): boolean => {
     // Skip if user is authenticated

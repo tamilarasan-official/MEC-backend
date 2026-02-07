@@ -151,7 +151,21 @@ export const orderQuerySchema = z.object({
     .optional()
     .transform((val) => (val ? parseInt(val, 10) : 20))
     .pipe(z.number().int().min(1).max(100).default(20)),
-  status: z.enum(ORDER_STATUSES).optional(),
+  status: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (!val) return undefined;
+      const parts = val.split(',').map(s => s.trim()).filter(Boolean);
+      // Return single string for one status, array for multiple
+      return parts.length === 1 ? parts[0] : parts;
+    })
+    .pipe(
+      z.union([
+        z.enum(ORDER_STATUSES),
+        z.array(z.enum(ORDER_STATUSES)).min(1),
+      ]).optional()
+    ),
   startDate: z
     .string()
     .optional()

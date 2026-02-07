@@ -7,8 +7,10 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authController } from './auth.controller.js';
 import { authenticate } from './auth.middleware.js';
+import { requireAuth } from '../../shared/middleware/auth.middleware.js';
 import { validate, registerSchema, loginSchema, refreshTokenSchema, changePasswordSchema } from './auth.validation.js';
 import { RateLimitConfig } from '../../config/constants.js';
+import { getClientIp } from '../../shared/utils/ip.util.js';
 
 // ============================================
 // RATE LIMITERS
@@ -32,8 +34,8 @@ const authRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    // Use IP address and username (if available) as key
-    const ip = req.ip ?? 'unknown';
+    // Use real client IP and username (if available) as key
+    const ip = getClientIp(req);
     const username = req.body?.username ?? '';
     return `${ip}:${username}`;
   },
@@ -130,6 +132,17 @@ router.put(
   authenticate,
   validate(changePasswordSchema),
   authController.changePassword
+);
+
+/**
+ * GET /auth/sessions
+ * Get login sessions (superadmin only)
+ * Protected - requires superadmin role
+ */
+router.get(
+  '/sessions',
+  requireAuth('superadmin'),
+  authController.getLoginSessions
 );
 
 // ============================================

@@ -29,6 +29,7 @@ interface FoodItemResponse {
   shopId: string;
   shopName?: string;
   isAvailable: boolean;
+  isVeg: boolean;
   isOffer?: boolean;
   offerPrice?: number;
   rating: number;
@@ -60,6 +61,7 @@ function transformFoodItem(item: IFoodItemDocument): FoodItemResponse {
     shopId: shopId,
     shopName: shopName,
     isAvailable: item.isAvailable,
+    isVeg: item.isVegetarian ?? false,
     isOffer: item.isOffer,
     offerPrice: item.offerPrice,
     rating: item.rating || 4.0,

@@ -18,7 +18,7 @@ import { UserRole } from '../users/user.model.js';
  */
 export interface AuthUser {
   id: string;
-  email: string;
+  email?: string;
   role: UserRole;
   shopId?: string;
 }

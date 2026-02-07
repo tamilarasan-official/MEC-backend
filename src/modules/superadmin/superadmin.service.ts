@@ -508,7 +508,7 @@ class SuperadminService {
     owners: Array<{
       id: string;
       name: string;
-      email: string;
+      email?: string;
       shopId: string | null;
       shopName: string | null;
       hasShopLinked: boolean;
@@ -620,7 +620,7 @@ class SuperadminService {
    */
   async linkOwnerToShop(ownerId: string, shopId: string): Promise<{
     success: boolean;
-    owner: { id: string; name: string; email: string };
+    owner: { id: string; name: string; email?: string };
     shop: { id: string; name: string };
   }> {
     // Validate IDs

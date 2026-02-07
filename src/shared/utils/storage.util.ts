@@ -15,6 +15,7 @@ const GARAGE_ENDPOINT = process.env['GARAGE_ENDPOINT'] || '';
 const GARAGE_ACCESS_KEY = process.env['GARAGE_ACCESS_KEY'] || '';
 const GARAGE_SECRET_KEY = process.env['GARAGE_SECRET_KEY'] || '';
 const GARAGE_BUCKET = process.env['GARAGE_BUCKET'] || 'mecfoodmenu';
+const GARAGE_AVATAR_BUCKET = process.env['GARAGE_AVATAR_BUCKET'] || 'mecavatars';
 const GARAGE_REGION = process.env['GARAGE_REGION'] || 'garage';
 
 // ============================================
@@ -66,7 +67,9 @@ function generateFileKey(folder: string, originalName: string): string {
   const timestamp = Date.now();
   const randomStr = Math.random().toString(36).substring(2, 8);
   const extension = originalName.split('.').pop()?.toLowerCase() || 'jpg';
-  const sanitizedName = originalName.replace(/[^a-zA-Z0-9.-]/g, '_').substring(0, 50);
+  // Strip the extension from the name to avoid double extensions (e.g. photo.jpg.jpg)
+  const nameWithoutExt = originalName.replace(/\.[^.]+$/, '');
+  const sanitizedName = nameWithoutExt.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 50);
 
   return `${folder}/${timestamp}-${randomStr}-${sanitizedName}.${extension}`;
 }
@@ -100,16 +103,26 @@ export async function uploadFile(
     const key = generateFileKey(folder, originalName);
     const contentType = getContentType(originalName);
 
-    const command = new PutObjectCommand({
-      Bucket: GARAGE_BUCKET,
-      Key: key,
-      Body: buffer,
-      ContentType: contentType,
-      // Make the file publicly readable
-      ACL: 'public-read',
-    });
-
-    await client.send(command);
+    // Try with public-read ACL first, fall back without ACL if not supported
+    try {
+      const command = new PutObjectCommand({
+        Bucket: GARAGE_BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        ACL: 'public-read',
+      });
+      await client.send(command);
+    } catch (aclError) {
+      logger.warn('Upload with ACL failed, retrying without ACL', { key, error: aclError instanceof Error ? aclError.message : 'Unknown' });
+      const command = new PutObjectCommand({
+        Bucket: GARAGE_BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+      });
+      await client.send(command);
+    }
 
     // Construct public URL
     const url = `${GARAGE_ENDPOINT}/${GARAGE_BUCKET}/${key}`;
@@ -122,7 +135,64 @@ export async function uploadFile(
       url,
     };
   } catch (error) {
-    logger.error('Failed to upload file', { error, originalName, folder });
+    logger.error('Failed to upload file', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      originalName,
+      folder,
+      endpoint: GARAGE_ENDPOINT,
+      bucket: GARAGE_BUCKET,
+    });
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Upload failed',
+    };
+  }
+}
+
+/**
+ * Upload an avatar file to the dedicated avatar bucket
+ */
+export async function uploadAvatarFile(
+  buffer: Buffer,
+  originalName: string,
+): Promise<UploadResult> {
+  try {
+    const client = getS3Client();
+    const key = generateFileKey('avatars', originalName);
+    const contentType = getContentType(originalName);
+
+    try {
+      const command = new PutObjectCommand({
+        Bucket: GARAGE_AVATAR_BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        ACL: 'public-read',
+      });
+      await client.send(command);
+    } catch (aclError) {
+      logger.warn('Avatar upload with ACL failed, retrying without ACL', { key, error: aclError instanceof Error ? aclError.message : 'Unknown' });
+      const command = new PutObjectCommand({
+        Bucket: GARAGE_AVATAR_BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+      });
+      await client.send(command);
+    }
+
+    const url = `${GARAGE_ENDPOINT}/${GARAGE_AVATAR_BUCKET}/${key}`;
+
+    logger.info('Avatar uploaded successfully', { key, url, contentType, bucket: GARAGE_AVATAR_BUCKET });
+
+    return { success: true, key, url };
+  } catch (error) {
+    logger.error('Failed to upload avatar', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      originalName,
+      endpoint: GARAGE_ENDPOINT,
+      bucket: GARAGE_AVATAR_BUCKET,
+    });
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Upload failed',
@@ -251,18 +321,25 @@ export const StorageFolders = {
   CATEGORIES: 'categories',
   SHOPS: 'shops',
   USERS: 'users',
+  AVATARS: 'avatars',
   OFFERS: 'offers',
 } as const;
 
 export type StorageFolder = typeof StorageFolders[keyof typeof StorageFolders];
 
+export function getAvatarBucket(): string {
+  return GARAGE_AVATAR_BUCKET;
+}
+
 export default {
   uploadFile,
+  uploadAvatarFile,
   uploadBase64Image,
   deleteFile,
   getUploadPresignedUrl,
   getDownloadPresignedUrl,
   getPublicUrl,
   isStorageConfigured,
+  getAvatarBucket,
   StorageFolders,
 };

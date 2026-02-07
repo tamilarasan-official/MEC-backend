@@ -35,7 +35,7 @@ export interface IUser {
   username: string;
   passwordHash: string;
   name: string;
-  email: string;
+  email?: string;
   phone?: string;
   avatarUrl?: string;
   role: UserRole;
@@ -47,6 +47,7 @@ export interface IUser {
   department?: Department;
   year?: Year;
   balance: number;
+  dietPreference: 'all' | 'veg' | 'nonveg';
 
   // Staff-specific fields (captain, owner, accountant)
   shop?: Types.ObjectId;
@@ -131,10 +132,9 @@ const UserSchema = new Schema<IUserDocument, IUserModel>(
     },
     email: {
       type: String,
-      required: [true, 'Email is required'],
-      unique: true,
       trim: true,
       lowercase: true,
+      sparse: true,
       match: [/^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$/, 'Please provide a valid email address'],
     },
     phone: {
@@ -189,6 +189,11 @@ const UserSchema = new Schema<IUserDocument, IUserModel>(
       type: Number,
       default: 0,
       min: [0, 'Balance cannot be negative'],
+    },
+    dietPreference: {
+      type: String,
+      enum: ['all', 'veg', 'nonveg'],
+      default: 'all',
     },
 
     // Staff-specific fields

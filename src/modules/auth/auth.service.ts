@@ -8,9 +8,12 @@ import jwt from 'jsonwebtoken';
 import type { JwtPayload as JWTLibPayload } from 'jsonwebtoken';
 const { TokenExpiredError, JsonWebTokenError } = jwt;
 import { Types } from 'mongoose';
+import { UAParser } from 'ua-parser-js';
 import { User, IUserDocument, UserRole, Department, Year } from '../users/user.model.js';
+import { LoginSession } from './login-session.model.js';
 import { logger } from '../../config/logger.js';
 import { JwtConfig } from '../../config/constants.js';
+import { convertToProxyUrl } from '../../shared/utils/image-url.util.js';
 
 // ============================================
 // TYPES
@@ -20,7 +23,7 @@ export interface RegisterData {
   username: string;
   password: string;
   name: string;
-  email: string;
+  email?: string;
   phone?: string;
   rollNumber: string;
   department: Department;
@@ -36,7 +39,7 @@ export interface LoginResult {
 export interface TokenPayload {
   sub: string;
   role: UserRole;
-  email: string;
+  email?: string;
   shopId?: string;
 }
 
@@ -50,7 +53,7 @@ export interface UserPublicData {
   id: string;
   username: string;
   name: string;
-  email: string;
+  email?: string;
   phone?: string;
   avatarUrl?: string;
   role: UserRole;
@@ -60,6 +63,7 @@ export interface UserPublicData {
   department?: Department;
   year?: Year;
   balance: number;
+  dietPreference: 'all' | 'veg' | 'nonveg';
   shopId?: string;
   shopName?: string;
   createdAt: Date;
@@ -144,7 +148,7 @@ function toPublicUser(user: IUserDocument): UserPublicData {
     name: user.name,
     email: user.email,
     phone: user.phone,
-    avatarUrl: user.avatarUrl,
+    avatarUrl: user.avatarUrl ? convertToProxyUrl(user.avatarUrl) : undefined,
     role: normalizeRole(user.role),
     isApproved: user.isApproved,
     isActive: user.isActive,
@@ -152,6 +156,7 @@ function toPublicUser(user: IUserDocument): UserPublicData {
     department: user.department,
     year: user.year,
     balance: user.balance,
+    dietPreference: user.dietPreference || 'all',
     shopId,
     shopName,
     createdAt: user.createdAt,
@@ -164,6 +169,48 @@ function toPublicUser(user: IUserDocument): UserPublicData {
  */
 function generateTokenId(): string {
   return new Types.ObjectId().toString();
+}
+
+/**
+ * Parse User-Agent string into structured device info
+ */
+function parseUserAgent(ua: string) {
+  const parser = new UAParser(ua);
+  const result = parser.getResult();
+
+  // Determine device type
+  let deviceType: 'android' | 'ios' | 'web' | 'unknown' = 'unknown';
+  const osName = (result.os.name || '').toLowerCase();
+  if (osName === 'android') {
+    deviceType = 'android';
+  } else if (osName === 'ios') {
+    deviceType = 'ios';
+  } else if (result.browser.name) {
+    deviceType = 'web';
+  }
+
+  // Build device name from vendor + model (e.g. "Samsung SM-G955U")
+  const vendor = result.device.vendor;
+  const model = result.device.model;
+  let deviceName: string | undefined;
+  if (vendor && model) {
+    deviceName = `${vendor} ${model}`;
+  } else if (model) {
+    deviceName = model;
+  } else if (vendor) {
+    deviceName = vendor;
+  }
+
+  return {
+    deviceType,
+    deviceName,
+    os: result.os.name || undefined,
+    osVersion: result.os.version || undefined,
+    browser: result.browser.name || undefined,
+    browserVersion: result.browser.version || undefined,
+    deviceVendor: vendor || undefined,
+    deviceModel: model || undefined,
+  };
 }
 
 // ============================================
@@ -184,10 +231,12 @@ export class AuthService {
       throw new AuthError('Username already taken', 'USERNAME_EXISTS', 409);
     }
 
-    // Check if email already exists
-    const existingEmail = await User.findByEmail(email);
-    if (existingEmail) {
-      throw new AuthError('Email already registered', 'EMAIL_EXISTS', 409);
+    // Check if email already exists (only if email provided)
+    if (email) {
+      const existingEmail = await User.findByEmail(email);
+      if (existingEmail) {
+        throw new AuthError('Email already registered', 'EMAIL_EXISTS', 409);
+      }
     }
 
     // Check if roll number already exists
@@ -210,7 +259,7 @@ export class AuthService {
       department,
       year,
       role: 'student',
-      isApproved: false, // Students need admin approval
+      isApproved: true, // Auto-approved on registration
       isActive: true,
       balance: 0,
     });
@@ -225,7 +274,28 @@ export class AuthService {
    * Returns tokens and user data on success
    * Implements account lockout after multiple failed attempts
    */
-  async login(usernameOrEmail: string, password: string): Promise<LoginResult> {
+  async login(usernameOrEmail: string, password: string, metadata?: {
+    ipAddress?: string;
+    userAgent?: string;
+    deviceId?: string;
+    macAddress?: string;
+    imei?: string;
+    location?: { lat: number; lng: number };
+    deviceInfo?: {
+      platform?: string;
+      language?: string;
+      screenResolution?: string;
+      timezone?: string;
+      colorDepth?: string;
+      touchSupport?: string;
+      hardwareConcurrency?: string;
+      deviceMemory?: string;
+      networkType?: string;
+      brand?: string;
+      model?: string;
+      osVersion?: string;
+    };
+  }): Promise<LoginResult> {
     // Find user with password hash (excluded by default)
     // Support login with either username or email
     const identifier = usernameOrEmail.toLowerCase();
@@ -307,6 +377,41 @@ export class AuthService {
     const refreshToken = this.generateRefreshToken(user);
 
     logger.info(`User logged in: ${user.username}`);
+
+    // Save login session for device tracking
+    if (metadata) {
+      try {
+        const parsed = parseUserAgent(metadata.userAgent || '');
+        // Merge UA-parsed device brand/model into client-sent deviceInfo
+        const deviceInfo = {
+          ...metadata.deviceInfo,
+          brand: metadata.deviceInfo?.brand || parsed.deviceVendor,
+          model: metadata.deviceInfo?.model || parsed.deviceModel,
+        };
+
+        await LoginSession.create({
+          user: user._id,
+          ipAddress: metadata.ipAddress || 'unknown',
+          userAgent: metadata.userAgent || 'unknown',
+          deviceType: parsed.deviceType,
+          deviceName: parsed.deviceName,
+          os: parsed.os,
+          osVersion: parsed.osVersion,
+          browser: parsed.browser,
+          browserVersion: parsed.browserVersion,
+          deviceId: metadata.deviceId,
+          macAddress: metadata.macAddress,
+          imei: metadata.imei,
+          deviceInfo,
+          isActive: true,
+          loginTime: new Date(),
+          location: metadata.location,
+        });
+      } catch (err) {
+        // Don't fail login if session tracking fails
+        logger.error('Failed to create login session:', err);
+      }
+    }
 
     return {
       user: toPublicUser(user),

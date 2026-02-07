@@ -6,6 +6,8 @@
 import { Router } from 'express';
 import { walletController } from './wallet.controller.js';
 import { authenticate, requireAuth } from '../../shared/middleware/auth.middleware.js';
+import { validate } from '../../shared/middleware/validate.middleware.js';
+import { vendorTransferSchema } from './wallet.validation.js';
 
 const router = Router();
 
@@ -70,6 +72,29 @@ router.get(
   '/accountant/transactions',
   requireAuth('accountant', 'owner', 'captain', 'superadmin', 'admin', 'super_admin'),
   walletController.getAllTransactions.bind(walletController)
+);
+
+/**
+ * @route GET /api/v1/accountant/vendor-payables
+ * @desc Get vendor payable amounts for all shops
+ * @access Private (Accountant, Superadmin)
+ */
+router.get(
+  '/accountant/vendor-payables',
+  requireAuth('accountant', 'superadmin', 'admin', 'super_admin'),
+  walletController.getVendorPayables.bind(walletController)
+);
+
+/**
+ * @route POST /api/v1/accountant/vendor-transfers
+ * @desc Update vendor transfer status
+ * @access Private (Accountant, Superadmin)
+ */
+router.post(
+  '/accountant/vendor-transfers',
+  requireAuth('accountant', 'superadmin', 'admin', 'super_admin'),
+  validate(vendorTransferSchema),
+  walletController.updateVendorTransfer.bind(walletController)
 );
 
 export default router;

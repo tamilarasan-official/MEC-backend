@@ -100,11 +100,23 @@ export class OrderController {
     // Emit new order event to shop
     orderEvents.emitNewOrder(validation.data.shopId, result.order);
 
+    // Emit balance update to student (wallet deducted at creation)
+    if (result.newBalance !== undefined) {
+      orderEvents.emitBalanceUpdate(
+        user.id,
+        'debit',
+        result.order.total,
+        result.newBalance,
+        `Payment for order ${result.order.orderNumber}`
+      );
+    }
+
     res.status(HttpStatus.CREATED).json(
       successResponse(
         {
           order: transformOrderImages(result.order),
           qrData: result.qrData,
+          newBalance: result.newBalance,
         },
         'Order created successfully'
       )
@@ -131,11 +143,23 @@ export class OrderController {
     // Emit new order event to shop
     orderEvents.emitNewOrder(validation.data.shopId, result.order);
 
+    // Emit balance update to student
+    if (result.newBalance !== undefined) {
+      orderEvents.emitBalanceUpdate(
+        user.id,
+        'debit',
+        result.order.total,
+        result.newBalance,
+        `Payment for laundry order ${result.order.orderNumber}`
+      );
+    }
+
     res.status(HttpStatus.CREATED).json(
       successResponse(
         {
           order: transformOrderImages(result.order),
           qrData: result.qrData,
+          newBalance: result.newBalance,
         },
         'Laundry order created successfully'
       )
@@ -162,11 +186,23 @@ export class OrderController {
     // Emit new order event to shop
     orderEvents.emitNewOrder(validation.data.shopId, result.order);
 
+    // Emit balance update to student
+    if (result.newBalance !== undefined) {
+      orderEvents.emitBalanceUpdate(
+        user.id,
+        'debit',
+        result.order.total,
+        result.newBalance,
+        `Payment for xerox order ${result.order.orderNumber}`
+      );
+    }
+
     res.status(HttpStatus.CREATED).json(
       successResponse(
         {
           order: transformOrderImages(result.order),
           qrData: result.qrData,
+          newBalance: result.newBalance,
         },
         'Xerox order created successfully'
       )
@@ -318,7 +354,70 @@ export class OrderController {
       orderEvents.emitOrderReady(order.user._id.toString(), order);
     }
 
+    // If order is cancelled, emit cancellation event and balance update (refund)
+    if (bodyValidation.data.status === 'cancelled') {
+      orderEvents.emitOrderCancelled(
+        order.user._id.toString(),
+        order.shop._id?.toString() || order.shop.toString(),
+        order
+      );
+
+      // Emit balance update for refund if payment was refunded
+      if (order.paymentStatus === 'refunded') {
+        // Fetch fresh user balance for the refund notification
+        const { User } = await import('../users/user.model.js');
+        const refundedUser = await User.findById(order.user._id || order.user);
+        if (refundedUser) {
+          orderEvents.emitBalanceUpdate(
+            order.user._id?.toString() || order.user.toString(),
+            'refund',
+            order.total,
+            refundedUser.balance,
+            `Refund for cancelled order ${order.orderNumber}`
+          );
+        }
+      }
+    }
+
     res.json(successResponse(transformOrderImages(order), `Order status updated to ${bodyValidation.data.status}`));
+  });
+
+  /**
+   * Mark individual item as delivered/undelivered
+   * PATCH /orders/:id/items/:itemIndex/deliver
+   * Role: captain, owner
+   */
+  markItemDelivered = asyncHandler(async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
+    const user = req.user as AuthUser;
+    const { id, itemIndex } = req.params;
+
+    if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+      throw AppError.validation('Invalid order ID');
+    }
+
+    const idx = parseInt(itemIndex, 10);
+    if (isNaN(idx) || idx < 0) {
+      throw AppError.validation('Invalid item index');
+    }
+
+    const { delivered } = req.body;
+    if (typeof delivered !== 'boolean') {
+      throw AppError.validation('delivered must be a boolean');
+    }
+
+    const order = await orderService.markItemDelivered(id, idx, delivered, user.id);
+
+    // Emit status change event
+    orderEvents.emitStatusChange(order.user._id.toString(), order);
+
+    // If all items delivered (completed), emit completion event
+    if (order.status === 'completed') {
+      orderEvents.emitOrderCompleted(order.user._id.toString(), order);
+    } else if (order.status === 'partially_delivered') {
+      orderEvents.emitPartialDelivery(order.user._id.toString(), order);
+    }
+
+    res.json(successResponse(transformOrderImages(order), `Item ${delivered ? 'marked as delivered' : 'unmarked'}`));
   });
 
   /**
@@ -350,6 +449,28 @@ export class OrderController {
 
     // Emit status change event
     orderEvents.emitStatusChange(order.user._id.toString(), order);
+
+    // Emit cancellation event
+    orderEvents.emitOrderCancelled(
+      order.user._id.toString(),
+      order.shop._id?.toString() || order.shop.toString(),
+      order
+    );
+
+    // Emit balance update for refund
+    if (order.paymentStatus === 'refunded') {
+      const { User } = await import('../users/user.model.js');
+      const refundedUser = await User.findById(order.user._id || order.user);
+      if (refundedUser) {
+        orderEvents.emitBalanceUpdate(
+          user.id,
+          'refund',
+          order.total,
+          refundedUser.balance,
+          `Refund for cancelled order ${order.orderNumber}`
+        );
+      }
+    }
 
     res.json(successResponse(transformOrderImages(order), 'Order cancelled successfully. Amount refunded to wallet.'));
   });

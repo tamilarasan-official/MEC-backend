@@ -5,9 +5,11 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { authService, AuthError } from './auth.service.js';
+import { LoginSession } from './login-session.model.js';
 import { RegisterInput, LoginInput, RefreshTokenInput, ChangePasswordInput } from './auth.validation.js';
 import { HttpStatus } from '../../config/constants.js';
 import { logger } from '../../config/logger.js';
+import { getClientIp } from '../../shared/utils/ip.util.js';
 
 // Cookie configuration
 const REFRESH_TOKEN_COOKIE_NAME = 'refreshToken';
@@ -103,8 +105,23 @@ export async function login(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { username, password } = req.body;
-    const result = await authService.login(username, password);
+    const { username, password, deviceId, clientIp, macAddress, imei, location, deviceInfo } = req.body;
+    const serverIp = getClientIp(req);
+    // Use client-reported public IP as fallback when server sees a loopback/private address
+    const ip = (serverIp === '127.0.0.1' || serverIp === '::1' || serverIp === 'unknown') && clientIp
+      ? clientIp
+      : serverIp;
+    const userAgent = req.get('User-Agent') || 'unknown';
+
+    const result = await authService.login(username, password, {
+      ipAddress: ip,
+      userAgent,
+      deviceId,
+      macAddress,
+      imei,
+      location,
+      deviceInfo,
+    });
 
     // Set refresh token as httpOnly cookie
     setRefreshTokenCookie(res, result.refreshToken);
@@ -223,6 +240,15 @@ export async function logout(
 
   const userId = req.user?.id;
   if (userId) {
+    // Mark all active sessions as logged out
+    try {
+      await LoginSession.updateMany(
+        { user: userId, isActive: true },
+        { isActive: false, logoutTime: new Date() }
+      );
+    } catch (err) {
+      logger.error('Failed to update login sessions on logout:', err);
+    }
     logger.info(`User logged out: ${userId}`);
   }
 
@@ -340,6 +366,52 @@ export async function changePassword(
   }
 }
 
+/**
+ * GET /auth/sessions
+ * Get login sessions (superadmin only)
+ * Supports pagination and filtering by userId
+ */
+export async function getLoginSessions(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { userId, page = '1', limit = '50' } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
+
+    const query: Record<string, unknown> = {};
+    if (userId && typeof userId === 'string') {
+      query.user = userId;
+    }
+
+    const [sessions, total] = await Promise.all([
+      LoginSession.find(query)
+        .populate('user', 'name email username role')
+        .sort({ loginTime: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum),
+      LoginSession.countDocuments(query),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        sessions,
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error('Get login sessions error:', error);
+    next(error);
+  }
+}
+
 // ============================================
 // EXPORTS
 // ============================================
@@ -351,6 +423,7 @@ export const authController = {
   logout,
   me,
   changePassword,
+  getLoginSessions,
 };
 
 export default authController;

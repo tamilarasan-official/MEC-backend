@@ -31,6 +31,9 @@ import { csrfProtection } from './shared/middleware/csrf.middleware.js';
 // Import IP blocking middleware
 import { checkIpBlock } from './shared/middleware/ip-block.middleware.js';
 
+// Import shared IP utility
+import { getClientIp } from './shared/utils/ip.util.js';
+
 // Re-export AppError for backwards compatibility
 export { AppError };
 
@@ -71,8 +74,8 @@ function isAllowedOrigin(origin: string): boolean {
   }
 }
 
-// Trust proxy (for rate limiting behind reverse proxy)
-app.set('trust proxy', 1);
+// Trust proxy — required for correct req.ip behind reverse proxies (Nginx, Cloudflare, etc.)
+app.set('trust proxy', true);
 
 // HTTPS redirect in production
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -183,9 +186,8 @@ app.use(cookieParser());
 // IP blocking middleware - disabled for now along with rate limiting
 // app.use(checkIpBlock);
 
-// CSRF protection for API routes
-// Generates token on all requests, validates on state-changing requests (POST, PUT, PATCH, DELETE)
-app.use('/api/v1', csrfProtection);
+// CSRF protection disabled — JWT auth on all state-changing endpoints is sufficient
+// app.use('/api/v1', csrfProtection);
 
 // General rate limiting
 // Uses a smart key: authenticated users are keyed by user ID (from JWT),
@@ -256,7 +258,7 @@ const unauthenticatedLimiter = rateLimit({
 // Request logging middleware
 app.use((req: Request, _res: Response, next: NextFunction) => {
   logger.http(`${req.method} ${req.path}`, {
-    ip: req.ip,
+    ip: getClientIp(req),
     userAgent: req.get('user-agent'),
   });
   next();

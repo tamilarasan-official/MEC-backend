@@ -6,6 +6,9 @@ import {
   getUserTransactions,
 } from './monthly-transaction.util.js';
 import { User, IUserDocument } from '../users/user.model.js';
+import { Order } from '../orders/order.model.js';
+import { Shop } from '../shops/shop.model.js';
+import { VendorTransfer } from './vendor-transfer.model.js';
 import { logger } from '../../config/logger.js';
 
 // Custom error class for wallet operations
@@ -114,7 +117,7 @@ export class WalletService {
   async creditWallet(
     userId: string,
     amount: number,
-    source: 'cash_deposit' | 'online_payment',
+    source: CreditSource,
     description: string | undefined,
     adminId: string
   ): Promise<TransactionResult> {
@@ -455,6 +458,145 @@ export class WalletService {
         hasPrevPage: page > 1,
       },
     };
+  }
+
+  /**
+   * Get vendor payables for all shops for a given period (month)
+   * Aggregates completed orders by shop, computes revenue, estimated cost (60%), and profit margin
+   */
+  async getVendorPayables(period?: string): Promise<{
+    payables: Array<{
+      shopId: string;
+      shopName: string;
+      category: string;
+      revenue: number;
+      estimatedCost: number;
+      profitMargin: number;
+      payableAmount: number;
+      orderCount: number;
+      transferStatus: string;
+      transferId?: string;
+      completedAt?: string;
+    }>;
+    period: string;
+  }> {
+    // Default to current month
+    const now = new Date();
+    const targetPeriod = period || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    // Parse period
+    const [yearStr, monthStr] = targetPeriod.split('-');
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10) - 1; // 0-indexed
+    const startOfMonth = new Date(year, month, 1);
+    const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59, 999);
+
+    // Aggregate completed orders by shop for the period
+    const orderStats = await Order.aggregate([
+      {
+        $match: {
+          status: 'completed',
+          completedAt: { $gte: startOfMonth, $lte: endOfMonth },
+        },
+      },
+      {
+        $group: {
+          _id: '$shop',
+          revenue: { $sum: '$total' },
+          orderCount: { $sum: 1 },
+          estimatedCost: {
+            $sum: {
+              $sum: {
+                $map: {
+                  input: { $ifNull: ['$items', []] },
+                  as: 'item',
+                  in: { $multiply: ['$$item.price', '$$item.quantity', 0.6] },
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    // Get all shops
+    const shops = await Shop.find({}).lean();
+    const shopMap = new Map(shops.map(s => [s._id.toString(), s]));
+
+    // Get existing transfers for this period
+    const transfers = await VendorTransfer.find({ period: targetPeriod }).lean();
+    const transferMap = new Map(transfers.map(t => [t.shop.toString(), t]));
+
+    // Build payables array
+    const payables = orderStats
+      .filter(stat => shopMap.has(stat._id.toString()))
+      .map(stat => {
+        const shop = shopMap.get(stat._id.toString())!;
+        const transfer = transferMap.get(stat._id.toString());
+        const revenue = stat.revenue;
+        const estimatedCost = stat.estimatedCost;
+        const profit = Math.max(0, revenue - estimatedCost);
+        const profitMarginPct = revenue > 0 ? Math.round((profit / revenue) * 100) : 0;
+        // Payable to vendor = estimated cost of goods (vendor's share)
+        const payableAmount = estimatedCost;
+
+        return {
+          shopId: stat._id.toString(),
+          shopName: shop.name,
+          category: shop.category,
+          revenue: Math.round(revenue),
+          estimatedCost: Math.round(estimatedCost),
+          profitMargin: profitMarginPct,
+          payableAmount: Math.round(payableAmount),
+          orderCount: stat.orderCount as number,
+          transferStatus: transfer?.status || 'pending',
+          transferId: transfer?._id?.toString(),
+          completedAt: transfer?.completedAt?.toISOString(),
+        };
+      })
+      .sort((a, b) => b.revenue - a.revenue);
+
+    return { payables, period: targetPeriod };
+  }
+
+  /**
+   * Update vendor transfer status (mark as completed or create new)
+   */
+  async updateVendorTransfer(
+    shopId: string,
+    period: string,
+    amount: number,
+    status: 'pending' | 'completed',
+    notes: string | undefined,
+    processedBy: string
+  ): Promise<Record<string, unknown>> {
+    const shopObjectId = new Types.ObjectId(shopId);
+    const processedByObjectId = new Types.ObjectId(processedBy);
+
+    // Upsert: create or update
+    const transfer = await VendorTransfer.findOneAndUpdate(
+      { shop: shopObjectId, period },
+      {
+        $set: {
+          amount,
+          status,
+          notes: notes || undefined,
+          processedBy: processedByObjectId,
+          ...(status === 'completed' ? { completedAt: new Date() } : {}),
+        },
+      },
+      { upsert: true, new: true, runValidators: true }
+    ).populate('shop', 'name');
+
+    logger.info('Vendor transfer updated', {
+      shopId,
+      period,
+      amount,
+      status,
+      processedBy,
+    });
+
+    return transfer.toJSON();
   }
 }
 

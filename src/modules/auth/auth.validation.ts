@@ -37,7 +37,8 @@ export const registerSchema = z.object({
   email: z
     .string()
     .email('Please provide a valid email address')
-    .transform((val) => val.toLowerCase()),
+    .transform((val) => val.toLowerCase())
+    .optional(),
   phone: z
     .string()
     .regex(/^[6-9]\d{9}$/, 'Please provide a valid 10-digit Indian mobile number')
@@ -67,6 +68,28 @@ export const loginSchema = z.object({
     .min(1, 'Username is required')
     .transform((val) => val.toLowerCase()),
   password: z.string().min(1, 'Password is required'),
+  deviceId: z.string().optional(),
+  clientIp: z.string().ip().optional(),
+  macAddress: z.string().max(50).optional(),
+  imei: z.string().max(20).optional(),
+  location: z.object({
+    lat: z.number(),
+    lng: z.number(),
+  }).optional(),
+  deviceInfo: z.object({
+    platform: z.string().optional(),
+    language: z.string().optional(),
+    screenResolution: z.string().optional(),
+    timezone: z.string().optional(),
+    colorDepth: z.string().optional(),
+    touchSupport: z.string().optional(),
+    hardwareConcurrency: z.string().optional(),
+    deviceMemory: z.string().optional(),
+    networkType: z.string().optional(),
+    brand: z.string().optional(),
+    model: z.string().optional(),
+    osVersion: z.string().optional(),
+  }).optional(),
 });
 
 /**

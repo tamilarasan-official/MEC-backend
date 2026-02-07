@@ -16,7 +16,7 @@ const SALT_ROUNDS = 12;
 interface CaptainResponse {
   id: string;
   name: string;
-  email: string;
+  email?: string;
   phone?: string;
   isActive: boolean;
   createdAt: Date;

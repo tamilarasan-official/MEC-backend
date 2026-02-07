@@ -5,6 +5,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../../config/logger.js';
+import { getClientIp } from '../utils/ip.util.js';
 
 // Configuration
 const MAX_VIOLATIONS = 5; // Number of rate limit violations before blocking
@@ -46,19 +47,7 @@ setInterval(() => {
   }
 }, CLEANUP_INTERVAL_MS);
 
-/**
- * Get client IP address
- */
-function getClientIp(req: Request): string {
-  const forwardedFor = req.headers['x-forwarded-for'];
-  if (typeof forwardedFor === 'string') {
-    return forwardedFor.split(',')[0].trim();
-  }
-  if (Array.isArray(forwardedFor)) {
-    return forwardedFor[0].trim();
-  }
-  return req.ip || req.socket.remoteAddress || 'unknown';
-}
+// getClientIp imported from shared utils
 
 /**
  * Check if an IP is blocked

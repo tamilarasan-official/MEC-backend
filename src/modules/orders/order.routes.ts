@@ -149,18 +149,7 @@ router.post(
 // PARAMETERIZED ROUTES (must be after static routes)
 // ============================================
 
-/**
- * Cancel an order (student only - pending orders)
- * POST /api/v1/orders/:id/cancel
- * Role: student
- */
-router.post(
-  '/:id/cancel',
-  requireAuth('student'),
-  validateParams(orderIdParamSchema),
-  validate(cancelOrderSchema),
-  orderController.cancel
-);
+// Student order cancellation is disabled - only captain/owner can cancel orders
 
 /**
  * Update order status
@@ -173,6 +162,17 @@ router.put(
   validateParams(orderIdParamSchema),
   validate(updateStatusSchema),
   orderController.updateStatus
+);
+
+/**
+ * Mark individual item as delivered/undelivered
+ * PATCH /api/v1/orders/:id/items/:itemIndex/deliver
+ * Role: captain, owner
+ */
+router.patch(
+  '/:id/items/:itemIndex/deliver',
+  requireAuth('captain', 'owner'),
+  orderController.markItemDelivered
 );
 
 /**
